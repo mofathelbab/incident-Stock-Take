@@ -210,6 +210,7 @@ details.setup ol{margin:10px 0 4px;padding-left:20px;display:grid;gap:6px}
       <span>to</span>
       <input class="in" id="dTo" type="date" aria-label="Created to">
       <button class="chip" type="button" data-dr="0">Today</button>
+      <button class="chip" type="button" data-dr="y">Yesterday</button>
       <button class="chip" type="button" data-dr="7">7 days</button>
       <button class="chip" type="button" data-dr="30">30 days</button>
     </div>
@@ -529,15 +530,19 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
   $('#tagAge').addEventListener('click', () => { st.age = null; render(); });
   $('#tagArea').addEventListener('click', () => { st.area = null; render(); });
   $('#reset').addEventListener('click', () => { st.whs.clear(); Object.assign(st, { from: '', to: '', q: '', age: null, area: null, sortKey: 'age', sortDir: -1, shown: 200 }); $('#q').value = ''; $('#dFrom').value = ''; $('#dTo').value = ''; render(); });
-  const drawDr = () => { const t = iso(new Date()); document.querySelectorAll('[data-dr]').forEach((b) => { const d = new Date(); d.setDate(d.getDate() - (+b.dataset.dr === 0 ? 0 : +b.dataset.dr - 1)); b.setAttribute('aria-pressed', String(st.to === t && st.from === iso(d))); }); };
+  const rangeOf = (k) => {
+    const t = new Date();
+    if (k === 'y') { const y = new Date(); y.setDate(y.getDate() - 1); return [iso(y), iso(y)]; }
+    const n = +k; const d = new Date(); d.setDate(d.getDate() - (n === 0 ? 0 : n - 1)); return [iso(d), iso(t)];
+  };
+  const drawDr = () => { document.querySelectorAll('[data-dr]').forEach((b) => { const [f, t] = rangeOf(b.dataset.dr); b.setAttribute('aria-pressed', String(st.from === f && st.to === t)); }); };
   const setRange = (from, to) => { if (from && to && from > to) [from, to] = [to, from]; st.from = from; st.to = to; $('#dFrom').value = from; $('#dTo').value = to; st.shown = 200; render(); drawDr(); };
   $('#dFrom').addEventListener('change', (e) => setRange(e.target.value, st.to));
   $('#dTo').addEventListener('change', (e) => setRange(st.from, e.target.value));
   document.querySelector('.dr').addEventListener('click', (e) => {
     const b = e.target.closest('[data-dr]'); if (!b) return;
     if (b.getAttribute('aria-pressed') === 'true') { setRange('', ''); return; }
-    const n = +b.dataset.dr; const d = new Date(); d.setDate(d.getDate() - (n === 0 ? 0 : n - 1));
-    setRange(iso(d), iso(new Date()));
+    const [f, t] = rangeOf(b.dataset.dr); setRange(f, t);
   });
   $('#reset').addEventListener('click', drawDr);
   $('#more').addEventListener('click', () => { st.shown += 200; drawTable(); });
