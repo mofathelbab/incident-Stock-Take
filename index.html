@@ -155,22 +155,15 @@ table.single .colwh{display:none}
 html{scroll-behavior:smooth}
 
 /* stock take */
-.slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,200px),1fr));gap:10px}
-.slot{background:var(--panel2);border:1px dashed var(--line);border-radius:14px;padding:12px;display:grid;gap:8px;align-content:start}
-.slot.drag{border-color:var(--y);background:var(--yd)}
-.slot.ok{border-style:solid}
-.slot .row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-.slot .st{font-size:12px;color:var(--muted)}
-.slot .st b{color:var(--fg)}
-.slot .acts{display:flex;gap:6px;flex-wrap:wrap}
-.slot .btn{padding:7px 10px;font-size:12.5px;text-decoration:none;display:inline-block}
-.dates{display:flex;flex-wrap:wrap;gap:10px;align-items:center;color:var(--muted);font-size:13px}
-.dates b{color:var(--fg)}
-.bars .r{cursor:pointer}
 tr.age-r td.age{color:var(--r);font-weight:800}
 tr.age-o td.age{color:var(--o);font-weight:700}
-.drop{border:1px dashed var(--line);border-radius:14px;padding:14px;text-align:center;color:var(--muted);font-size:13px}
-.drop.drag{border-color:var(--y);color:var(--y);background:var(--yd)}
+.exbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-left:auto}
+.exbar .lbl{font-size:12.5px}
+.chip .n{font-weight:600;opacity:.75;margin-left:6px}
+details.setup{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px 16px;color:var(--muted);font-size:13px}
+details.setup summary{cursor:pointer;color:var(--fg);font-weight:700}
+details.setup ol{margin:10px 0 4px;padding-left:20px;display:grid;gap:6px}
+.bmk{display:inline-block;background:var(--y);color:var(--yink);font-weight:800;padding:7px 12px;border-radius:999px;text-decoration:none;cursor:grab}
 </style>
 </head>
 <body>
@@ -182,18 +175,13 @@ tr.age-o td.age{color:var(--o);font-weight:700}
       <p class="sub">grouping_key: incident_stocktake · CAIID01 to CAIID07</p>
     </div>
     <div class="top-r">
-      <span class="pill">Jobs created <b id="range">—</b></span>
-      <div class="menu">
-        <button class="btn ob" id="exportBtn" type="button" aria-haspopup="true" aria-expanded="false">Export ▾</button>
-        <div class="menu-list" id="exportMenu" hidden>
-          <button type="button" data-ex="xlsx">Export as Excel<span>Summary, aging, areas and jobs, current filters</span></button>
-          <button type="button" data-ex="csv">Export jobs as CSV<span>Job table with current filters</span></button>
-        </div>
-      </div>
+      <span class="pill live" id="live"><span class="dot"></span><span id="liveTxt">Loading</span></span>
+      <span class="pill">Updated <b id="loadedAt">—</b></span>
+      <button class="btn yb" id="refresh" type="button">Refresh</button>
     </div>
   </div>
   <nav class="nav" aria-label="Sections">
-    <a href="#pull">Load data</a><a href="#warehouses">Overview</a><a href="#aging">Aging</a><a href="#areas">Areas</a><a href="#jobsec">Jobs</a>
+    <a href="#warehouses">Overview</a><a href="#aging">Aging</a><a href="#areas">Areas</a><a href="#daily">By day</a><a href="#jobsec">Jobs</a>
   </nav>
 </header>
 
@@ -204,32 +192,22 @@ tr.age-o td.age{color:var(--o);font-weight:700}
     <p class="note">Showing <b id="selName" style="color:var(--y)">All warehouses</b><span id="flt"></span></p>
   </div>
 
-  <section class="panel" id="pull">
-    <div class="ph">
-      <div class="ico" style="--ic:rgba(255,229,0,.12);--icc:var(--y)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></div>
-      <div><h2 class="h">Load data</h2><p class="note">For each warehouse: open its report (pending stock_take, created up to today), click Export CSV there, then drop the file on that warehouse's card or click Load CSV. Loaded data stays in this browser until you load a newer file.</p></div>
-    </div>
-    <div class="dates">
-      <label for="from">From</label><input class="in" id="from" type="date" value="2026-05-01">
-      <span>to <b id="today">today</b> (always the current date)</span>
-      <button class="btn" id="clearAll" type="button">Clear loaded data</button>
-    </div>
-    <div class="slots" id="slots"></div>
-    <div class="drop" id="drop">Or drop several CSVs here at once. Files from a warehouse you loaded before are matched automatically.</div>
-    <input type="file" id="file" accept=".csv,text/csv" hidden>
-  </section>
-
   <section class="sec" id="warehouses">
-    <div><h2 class="h">Warehouse overview</h2><p class="note">Pending jobs per warehouse. Click a card to focus on it.</p></div>
+    <div><h2 class="h">Warehouse overview</h2><p class="note">Pending incident stock-take jobs per warehouse. Click cards or chips to pick one or more warehouses; click again to remove.</p></div>
     <div class="cards" id="cards"></div>
   </section>
 
   <div class="filters" id="filters">
-    <div class="chips" id="chips" role="group" aria-label="Warehouse"></div>
+    <div class="chips" id="chips" role="group" aria-label="Warehouses"></div>
     <input class="in search" id="q" type="search" placeholder="Search job, location or area" aria-label="Search job, location or area">
     <button class="tag" id="tagAge" type="button" hidden></button>
     <button class="tag" id="tagArea" type="button" hidden></button>
     <button class="btn" id="reset" type="button">Reset filters</button>
+    <div class="exbar">
+      <span class="lbl" id="exScope">Export: all warehouses</span>
+      <button class="btn ob" id="exCsv" type="button">CSV</button>
+      <button class="btn yb" id="exXlsx" type="button">Excel</button>
+    </div>
   </div>
 
   <section class="kpis" id="kpis">
@@ -245,16 +223,16 @@ tr.age-o td.age{color:var(--o);font-weight:700}
     <section class="panel" id="aging">
       <div class="ph">
         <div class="ico" style="--ic:rgba(248,113,113,.14);--icc:var(--r)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg></div>
-        <div><h2 class="h">Aging</h2><p class="note">How long jobs have been pending since they were created. Click a row to filter the jobs.</p></div>
+        <div><h2 class="h">Aging</h2><p class="note">How long jobs have been pending since they were created. Click a row to filter.</p></div>
       </div>
       <div class="exrows" id="ageChart"></div>
     </section>
     <section class="panel" id="areas">
       <div class="ph">
         <div class="ico" style="--ic:rgba(96,165,250,.14);--icc:var(--b)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h12M4 12h16M4 18h8"/></svg></div>
-        <div><h2 class="h">Pending by area</h2><p class="note">Area is the start of the location code (for example ID01-A03). Click a bar to filter.</p></div>
+        <div><h2 class="h">Pending by area</h2><p class="note">Area is the start of the location code (for example ID01-A03). Top 20. Click a bar to filter.</p></div>
       </div>
-      <div class="chart bars" id="areaChart"></div>
+      <div class="chart" id="areaChart"></div>
     </section>
   </div>
 
@@ -278,7 +256,6 @@ tr.age-o td.age{color:var(--o);font-weight:700}
           <th><button type="button" data-sort="job">Job</button></th>
           <th><button type="button" data-sort="loc">Location</button></th>
           <th class="hide-sm"><button type="button" data-sort="area">Area</button></th>
-          <th class="hide-sm"><button type="button" data-sort="grp">Grouping</button></th>
           <th class="num hide-sm"><button type="button" data-sort="prio">Priority</button></th>
           <th><button type="button" data-sort="created">Created</button></th>
           <th class="num"><button type="button" data-sort="age">Age (days)</button></th>
@@ -288,16 +265,39 @@ tr.age-o td.age{color:var(--o);font-weight:700}
     </div>
     <div class="foot"><span id="count"></span><button class="btn" id="more" type="button" hidden>Show 200 more</button></div>
   </section>
+
+  <details class="setup">
+    <summary>How to refresh the data</summary>
+    <ol>
+      <li>Drag this button to your bookmarks bar (once): <a class="bmk" id="bmk" href="#">Refresh Stock Take</a></li>
+      <li>Open any page on grocery-tools.noon.team (you must be logged in) and click the bookmark. It pulls every pending incident stock-take job for CAIID01 to CAIID07, created up to today.</li>
+      <li>This page picks up the new data within a minute, or click Refresh.</li>
+    </ol>
+  </details>
 </main>
 
 <script>
 /* =====================================================================
    SETTINGS
+   The data comes from the "Refresh Stock Take" bookmark, which saves
+   every pull to Supabase. This page only reads it (read-only key).
    ===================================================================== */
+const SB_URL = 'https://zjqjdfbylnplwsavvonh.supabase.co';
+const SB_READ_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpqcWpkZmJ5bG5wbHdzYXZ2b25oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5MDI1NzIsImV4cCI6MjEwNzQ3ODU3Mn0.KJxS5FHFpQz-eQGQzO8yI0il8uNPrjKfXAEBStfcmjk';
 const WAREHOUSES = ['CAIID01', 'CAIID02', 'CAIID03', 'CAIID04', 'CAIID05', 'CAIID06', 'CAIID07'];
-const REPORT_URL = 'https://grocery-tools.noon.team/group/dcss/subgroup/jobs/report/stocktake_jobs';
-const STORE_KEY = 'caiid_stocktake_v1';
-const ONLY_GROUPING = 'incident_stocktake'; // only jobs with this grouping_key are counted
+const ONLY_GROUPING = 'incident_stocktake';
+// warehouse_code in the report -> WH (the report has no WH column)
+const WH_BY_CODE = {
+  W00840432EG: 'CAIID01',
+  W00840433EG: 'CAIID02',
+  W00867043EG: 'CAIID03',
+  W00867051EG: 'CAIID04',
+  W00867052EG: 'CAIID05',
+  W00852950EG: 'CAIID06',
+  // CAIID07: add its warehouse_code here when known
+};
+const CHECK_EVERY_SECONDS = 60;
+const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'https%3A%2F%2Fzjqjdfbylnplwsavvonh.supabase.co'%3B%20const%20AK%20%3D%20'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpqcWpkZmJ5bG5wbHdzYXZ2b25oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5MDI1NzIsImV4cCI6MjEwNzQ3ODU3Mn0.KJxS5FHFpQz-eQGQzO8yI0il8uNPrjKfXAEBStfcmjk'%3B%20const%20FROM%20%3D%20'2025-01-01'%3B%20const%20GROUPING%20%3D%20'incident_stocktake'%3B%20const%20WHS%20%3D%20%5B'CAIID01'%2C%20'CAIID02'%2C%20'CAIID03'%2C%20'CAIID04'%2C%20'CAIID05'%2C%20'CAIID06'%2C%20'CAIID07'%5D%3B%20const%20PATHS%20%3D%20%5B'%2F_svc%2Fipks-team%2Freport%2Fdcss%2Fjobs%2Fstocktake_jobs'%2C%20'%2F_svc%2Fipks-team%2Freport%2Fdcss%2Fstocktake_jobs'%2C%20'%2F_svc%2Fipks-team%2Freport%2Fdcss%2Fjob%2Fstocktake_jobs'%2C%20'%2F_svc%2Fipks-team%2Freport%2Fdcss%2Fjobs%2Fstocktake_job'%5D%3B%20if%20(!location.host.includes('grocery-tools.noon.team'))%20%7B%20alert('Open%20any%20report%20on%20grocery-tools.noon.team%20first%2C%20then%20click%20this%20bookmark.')%3B%20return%3B%20%7D%20let%20WK%20%3D%20''%3B%20try%20%7B%20WK%20%3D%20localStorage.getItem('soh_refresh_key')%20%7C%7C%20''%3B%20%7D%20catch%20(e)%20%7B%7D%20if%20(!WK)%20%7B%20WK%20%3D%20(prompt('First%20time%20only%3A%20paste%20the%20refresh%20key%20(Supabase%20%3E%20soh_settings%20%3E%20write_key)')%20%7C%7C%20'').trim()%3B%20if%20(!WK)%20return%3B%20try%20%7B%20localStorage.setItem('soh_refresh_key'%2C%20WK)%3B%20%7D%20catch%20(e)%20%7B%7D%20%7D%20const%20d%20%3D%20new%20Date()%3B%20const%20TO%20%3D%20new%20Date(d.getTime()%20-%20d.getTimezoneOffset()%20*%206e4).toISOString().slice(0%2C%2010)%3B%20const%20old%20%3D%20document.getElementById('st-refresh-box')%3B%20if%20(old)%20old.remove()%3B%20const%20box%20%3D%20document.createElement('div')%3B%20box.id%20%3D%20'st-refresh-box'%3B%20box.style.cssText%20%3D%20'position%3Afixed%3Btop%3A20px%3Bright%3A20px%3Bz-index%3A2147483647%3Bdisplay%3Aflex%3Bflex-direction%3Acolumn%3Bgap%3A8px%3Bmin-width%3A260px%3Bmax-width%3A380px%3Bpadding%3A14px%2016px%3Bfont%3A600%2014px%2F1.4%20system-ui%2Csans-serif%3Bcolor%3A%23fff%3Bbackground%3A%230f1a2e%3Bborder%3A1px%20solid%20%2322324f%3Bborder-radius%3A12px%3Bbox-shadow%3A0%208px%2028px%20rgba(0%2C0%2C0%2C.35)'%3B%20const%20msg%20%3D%20document.createElement('div')%3B%20const%20row%20%3D%20document.createElement('div')%3B%20row.style.cssText%20%3D%20'display%3Aflex%3Bgap%3A8px'%3B%20const%20close%20%3D%20document.createElement('button')%3B%20close.textContent%20%3D%20'Close'%3B%20close.style.cssText%20%3D%20'cursor%3Apointer%3Bborder%3A0%3Bborder-radius%3A8px%3Bpadding%3A8px%2012px%3Bfont%3A700%2013px%20system-ui%2Csans-serif%3Bbackground%3A%2322324f%3Bcolor%3A%23fff'%3B%20close.onclick%20%3D%20()%20%3D%3E%20box.remove()%3B%20box.append(msg%2C%20row)%3B%20document.body.appendChild(box)%3B%20row.append(close)%3B%20const%20say%20%3D%20(t%2C%20c)%20%3D%3E%20%7B%20msg.textContent%20%3D%20t%3B%20msg.style.color%20%3D%20c%20%7C%7C%20'%23fff'%3B%20%7D%3B%20const%20qs%20%3D%20(w%2C%20p)%20%3D%3E%20'%3Fpage%3D'%20%2B%20p%20%2B%20'%26limit%3D5000%26job_status%3Dpending%26process_type%3Dstock_take%26partner_warehouse_code%3D'%20%2B%20w%20%2B%20'%26job_created_date_from%3D'%20%2B%20FROM%20%2B%20'%26job_created_date_to%3D'%20%2B%20TO%3B%20const%20get%20%3D%20async%20(path%2C%20w%2C%20p)%20%3D%3E%20%7B%20const%20r%20%3D%20await%20fetch(path%20%2B%20qs(w%2C%20p)%2C%20%7B%20credentials%3A%20'include'%20%7D)%3B%20const%20t%20%3D%20await%20r.text()%3B%20let%20j%3B%20try%20%7B%20j%20%3D%20JSON.parse(t)%3B%20%7D%20catch%20(e)%20%7B%20throw%20new%20Error('reply%20was%20not%20JSON%20('%20%2B%20r.status%20%2B%20')')%3B%20%7D%20if%20(j.error)%20throw%20new%20Error(String(j.error))%3B%20if%20(!j.data%20%7C%7C%20!Array.isArray(j.data.rows))%20throw%20new%20Error('unexpected%20reply')%3B%20return%20j%3B%20%7D%3B%20say('Finding%20the%20Stocktake%20Jobs%20report...')%3B%20let%20path%20%3D%20null%2C%20lastErr%20%3D%20''%3B%20for%20(const%20p%20of%20PATHS)%20%7B%20try%20%7B%20await%20get(p%2C%20WHS%5B0%5D%2C%201)%3B%20path%20%3D%20p%3B%20break%3B%20%7D%20catch%20(e)%20%7B%20lastErr%20%3D%20e.message%3B%20%7D%20%7D%20if%20(!path)%20%7B%20say('Could%20not%20reach%20the%20Stocktake%20Jobs%20data%20('%20%2B%20lastErr%20%2B%20').%20Send%20Claude%20a%20screenshot%20of%20the%20Network%20tab%20after%20clicking%20Submit%20on%20the%20report.'%2C%20'%23f87171')%3B%20return%3B%20%7D%20const%20cols%20%3D%20%5B'partner_warehouse_code'%2C%20'jobNr'%2C%20'warehouse_code'%2C%20'job_location_code'%2C%20'grouping_key'%2C%20'job_priority'%2C%20'job_status'%2C%20'job_creation_date'%2C%20'username'%5D%3B%20const%20rows%20%3D%20%5B%5D%3B%20const%20per%20%3D%20%7B%7D%3B%20try%20%7B%20for%20(const%20w%20of%20WHS)%20%7B%20per%5Bw%5D%20%3D%200%3B%20let%20p%20%3D%201%2C%20pages%20%3D%201%3B%20do%20%7B%20say('Loading%20'%20%2B%20w%20%2B%20'%20(page%20'%20%2B%20p%20%2B%20')...')%3B%20const%20j%20%3D%20await%20get(path%2C%20w%2C%20p)%3B%20for%20(const%20r%20of%20j.data.rows)%20%7B%20if%20(String(r.grouping_key%20%7C%7C%20'').trim()%20!%3D%3D%20GROUPING)%20continue%3B%20if%20(r.job_status%20%26%26%20String(r.job_status).toLowerCase()%20!%3D%3D%20'pending')%20continue%3B%20rows.push(cols.map((c)%20%3D%3E%20(c%20%3D%3D%3D%20'partner_warehouse_code'%20%3F%20w%20%3A%20r%5Bc%5D%20%3D%3D%20null%20%3F%20''%20%3A%20String(r%5Bc%5D))))%3B%20per%5Bw%5D%2B%2B%3B%20%7D%20pages%20%3D%20j.data.no_of_pages%20%7C%7C%201%3B%20p%2B%2B%3B%20%7D%20while%20(p%20%3C%3D%20pages)%3B%20%7D%20%7D%20catch%20(e)%20%7B%20say('Could%20not%20load%20the%20report%3A%20'%20%2B%20e.message%2C%20'%23f87171')%3B%20return%3B%20%7D%20say('Saving%20'%20%2B%20rows.length.toLocaleString()%20%2B%20'%20pending%20jobs...')%3B%20try%20%7B%20const%20res%20%3D%20await%20fetch(SB%20%2B%20'%2Frest%2Fv1%2Frpc%2Fsave_stocktake'%2C%20%7B%20method%3A%20'POST'%2C%20headers%3A%20%7B%20apikey%3A%20AK%2C%20Authorization%3A%20'Bearer%20'%20%2B%20AK%2C%20'Content-Type'%3A%20'application%2Fjson'%20%7D%2C%20body%3A%20JSON.stringify(%7B%20p_key%3A%20WK%2C%20p_cols%3A%20cols%2C%20p_rows%3A%20rows%20%7D)%20%7D)%3B%20if%20(!res.ok)%20throw%20new%20Error((await%20res.text()).slice(0%2C%20200))%3B%20say('Stock%20take%20dashboard%20updated%3A%20'%20%2B%20rows.length.toLocaleString()%20%2B%20'%20pending%20incident%20jobs%20('%20%2B%20WHS.map((w)%20%3D%3E%20w.slice(-2)%20%2B%20'%3A%20'%20%2B%20per%5Bw%5D).join('%2C%20')%20%2B%20').%20It%20refreshes%20within%20a%20minute.'%2C%20'%2334d399')%3B%20%7D%20catch%20(e)%20%7B%20const%20wrong%20%3D%20%2FWrong%20refresh%20key%2F.test(e.message)%3B%20if%20(wrong)%20%7B%20try%20%7B%20localStorage.removeItem('soh_refresh_key')%3B%20%7D%20catch%20(x)%20%7B%7D%20%7D%20say(wrong%20%3F%20'The%20refresh%20key%20is%20wrong.%20Click%20the%20bookmark%20again%20and%20paste%20the%20key%20from%20Supabase.'%20%3A%20%2Fsave_stocktake%2F.test(e.message)%20%3F%20'Supabase%20is%20not%20set%20up%20yet%3A%20run%20the%20SQL%20file%20in%20the%20Supabase%20SQL%20Editor%20first.%20('%20%2B%20e.message%20%2B%20')'%20%3A%20'Could%20not%20save%3A%20'%20%2B%20e.message%2C%20'%23f87171')%3B%20%7D%20%7D)()%3B%20";
 
 (function () {
   const F = d3.format(',');
@@ -314,120 +314,86 @@ const ONLY_GROUPING = 'incident_stocktake'; // only jobs with this grouping_key 
   ];
   const AGL = Object.fromEntries(AG.map((a) => [a.k, a.l]));
   const ageBucket = (d) => AG.find((a) => a.t(d)).k;
-  const st = { wh: 'All', grp: 'All', q: '', age: null, area: null, sortKey: 'age', sortDir: -1, shown: 200 };
+  const st = { whs: new Set(), q: '', age: null, area: null, sortKey: 'age', sortDir: -1, shown: 200 };
+  const H = { apikey: SB_READ_KEY, Authorization: 'Bearer ' + SB_READ_KEY };
+  const API = SB_URL + '/rest/v1/stocktake_snapshots?id=eq.1&select=';
+  let RAW = null, L = [], lastAt = null, updatedLabel = '';
+  $('#bmk').href = BOOKMARK;
+  $('#bmk').addEventListener('click', (e) => { e.preventDefault(); alert('Drag this button to your bookmarks bar, then click it on grocery-tools.noon.team.'); });
 
-  // ---------- storage: { from, data: { CAIID01: { at, file, code, rows: [...] } }, codes: { W00840432EG: 'CAIID01' } } ----------
-  let S = { from: '2026-05-01', data: {}, codes: {} };
-  try { const raw = localStorage.getItem(STORE_KEY); if (raw) S = Object.assign(S, JSON.parse(raw)); } catch (e) {}
-  const save = () => { try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch (e) { alert('This browser could not save the data; it will be lost on reload.'); } };
-
-  const reportLink = (wh) => {
-    const u = new URL(REPORT_URL);
-    u.searchParams.set('job_status', 'pending');
-    u.searchParams.set('partner_warehouse_code', wh);
-    u.searchParams.set('process_type', 'stock_take');
-    u.searchParams.set('job_created_date_from', S.from);
-    u.searchParams.set('job_created_date_to', iso(new Date()));
-    return u.toString();
-  };
-
-  function parseCSV(text) {
-    const rows = d3.csvParse(text.replace(/^\uFEFF/, ''));
-    if (!rows.columns.includes('job_location_code') || !rows.columns.includes('job_creation_date')) throw new Error('This file has no job_location_code or job_creation_date column. Is it the Stocktake Jobs export?');
-    return rows.filter((r) => (r.jobNr || r.job_location_code) && String(r.grouping_key || '').trim() === ONLY_GROUPING).map((r) => ({
-      job: r.jobNr || '', loc: r.job_location_code || '', code: r.warehouse_code || '', grp: r.grouping_key || '', prio: +r.job_priority || 0,
-      status: r.job_status || '', created: String(r.job_creation_date || '').replace('T', ' ').slice(0, 19), user: r.username || '',
-    }));
-  }
-  function store(wh, rows, file) {
-    const codes = [...new Set(rows.map((r) => r.code).filter(Boolean))];
-    codes.forEach((c) => { S.codes[c] = wh; });
-    S.data[wh] = { at: Date.now(), file, code: codes.join(', '), rows };
-    save(); build(); render();
-  }
-  async function readFile(file, wh) {
-    try {
-      const rows = parseCSV(await file.text());
-      if (!wh) {
-        const codes = [...new Set(rows.map((r) => r.code).filter(Boolean))];
-        wh = codes.length === 1 ? S.codes[codes[0]] : null;
-        if (!wh) { alert(file.name + ': I can\'t tell which warehouse this file is for yet. Drop it on its warehouse card the first time.'); return; }
-      }
-      store(wh, rows, file.name);
-    } catch (e) { alert(file.name + ': ' + e.message); }
-  }
-
-  // ---------- model ----------
-  let L = [];
-  const now = () => Date.now();
-  const areaOf = (loc) => { const p = loc.split('-'); return p.length > 1 ? p[0] + '-' + p[1] : loc || '(none)'; };
+  // ---------- data ----------
+  const areaOf = (loc) => { const p = String(loc || '').split('-'); return p.length > 1 ? p[0] + '-' + p[1] : loc || '(none)'; };
   function build() {
-    const t = now(), today = iso(new Date());
+    if (!RAW) { L = []; return; }
+    const t = Date.now(), today = iso(new Date());
+    const ix = Object.fromEntries(RAW.cols.map((c, i) => [c, i]));
+    const g = (a, c) => (ix[c] == null ? '' : a[ix[c]] ?? '');
     L = [];
-    for (const wh of WAREHOUSES) {
-      const d = S.data[wh]; if (!d) continue;
-      for (const r of d.rows) {
-        if (r.grp !== ONLY_GROUPING) continue;
-        const ms = Date.parse(r.created.replace(' ', 'T'));
-        const age = isNaN(ms) ? 0 : Math.max(0, Math.floor((t - ms) / 864e5));
-        L.push({ wh, job: r.job, loc: r.loc, area: areaOf(r.loc), grp: r.grp, prio: r.prio, created: r.created, day: r.created.slice(0, 10), isToday: r.created.slice(0, 10) === today, age, ab: ageBucket(age) });
-      }
+    for (const a of RAW.rows) {
+      if (String(g(a, 'grouping_key')).trim() !== ONLY_GROUPING) continue;
+      const code = String(g(a, 'warehouse_code')).trim();
+      const wh = WH_BY_CODE[code] || g(a, 'partner_warehouse_code'); if (!wh) continue;
+      const created = String(g(a, 'job_creation_date')).replace('T', ' ').slice(0, 19);
+      const ms = Date.parse(created.replace(' ', 'T'));
+      const age = isNaN(ms) ? 0 : Math.max(0, Math.floor((t - ms) / 864e5));
+      const loc = g(a, 'job_location_code');
+      L.push({ wh, job: g(a, 'jobNr'), loc, area: areaOf(loc), prio: +g(a, 'job_priority') || 0, created, day: created.slice(0, 10), isToday: created.slice(0, 10) === today, age, ab: ageBucket(age), code });
     }
   }
+  function setLive(state, txt) { const l = $('#live'); l.classList.toggle('err', state === 'err'); l.classList.toggle('busy', state === 'busy'); $('#liveTxt').textContent = txt; }
+  const when = (t) => new Date(t).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  async function load(force) {
+    setLive('busy', RAW ? 'Checking' : 'Loading');
+    try {
+      if (RAW && !force) {
+        const r = await fetch(API + 'updated_at', { headers: H, cache: 'no-store' });
+        if (r.ok) { const j = await r.json(); if (j[0] && j[0].updated_at === lastAt) { setLive('ok', 'LIVE'); build(); render(); return; } }
+      }
+      const res = await fetch(API + 'updated_at,row_count,cols,rows', { headers: H, cache: 'no-store' });
+      if (!res.ok) throw new Error('Supabase answered ' + res.status + (res.status === 404 ? ' (run the setup SQL first)' : ''));
+      const j = await res.json();
+      if (!j[0]) { RAW = null; setLive('err', 'No data yet'); render('No data yet. Click the Refresh Stock Take bookmark on grocery-tools.noon.team (see "How to refresh the data" at the bottom).'); return; }
+      RAW = j[0]; lastAt = RAW.updated_at; updatedLabel = when(lastAt);
+      $('#loadedAt').textContent = updatedLabel;
+      build(); setLive('ok', 'LIVE'); render();
+    } catch (e) { setLive('err', 'Load failed'); if (!RAW) render('Could not load the data. ' + e.message); }
+  }
+
+  // ---------- views ----------
+  const inWh = (w) => !st.whs.size || st.whs.has(w);
   const matchQ = (q, ...v) => !q || v.some((x) => String(x || '').toLowerCase().includes(q));
   const baseView = (skip) => {
     const q = st.q.trim().toLowerCase();
-    return L.filter((l) => (st.wh === 'All' || l.wh === st.wh) && (st.grp === 'All' || l.grp === st.grp) && (skip === 'age' || !st.age || l.ab === st.age) && (skip === 'area' || !st.area || l.area === st.area) && matchQ(q, l.job, l.loc, l.area));
+    return L.filter((l) => inWh(l.wh) && (skip === 'age' || !st.age || l.ab === st.age) && (skip === 'area' || !st.area || l.area === st.area) && matchQ(q, l.job, l.loc, l.area));
   };
   function jobView() {
     const rows = baseView();
-    rows.sort((a, b) => {
-      const va = a[st.sortKey], vb = b[st.sortKey];
-      const c = typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb));
-      return c * st.sortDir || b.age - a.age || a.loc.localeCompare(b.loc);
-    });
+    rows.sort((a, b) => { const va = a[st.sortKey], vb = b[st.sortKey]; const c = typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb)); return c * st.sortDir || b.age - a.age || a.loc.localeCompare(b.loc); });
     return rows;
   }
-  const kpisOf = (rows) => ({ jobs: rows.length, locs: new Set(rows.map((l) => l.wh + '|' + l.loc)).size, today: rows.filter((l) => l.isToday).length, d7: rows.filter((l) => l.age > 7).length, d30: rows.filter((l) => l.age > 30).length, oldest: d3.max(rows, (l) => l.age) ?? 0 });
+  const kpisOf = (rows) => ({ jobs: rows.length, locs: new Set(rows.map((l) => l.wh + '|' + l.loc)).size, today: rows.filter((l) => l.isToday).length, d7: rows.filter((l) => l.age > 7).length, d30: rows.filter((l) => l.age > 30).length, oldest: rows.length ? d3.max(rows, (l) => l.age) : 0 });
+  const selList = () => WAREHOUSES.filter((w) => st.whs.has(w));
+  const scopeName = () => (st.whs.size ? selList().join(', ') : 'All warehouses');
+  const scopeFile = () => (st.whs.size ? selList().join('+') : 'All');
 
   // ---------- render ----------
-  function render() {
-    $('#today').textContent = iso(new Date());
-    $('#range').textContent = S.from + ' → today';
-    $('#selName').textContent = st.wh === 'All' ? 'All warehouses' : st.wh;
+  function render(emptyMsg) {
+    $('#selName').textContent = scopeName();
     const ex = [];
-    if (st.grp !== 'All') ex.push(st.grp); if (st.age) ex.push('age ' + AGL[st.age]); if (st.area) ex.push('area ' + st.area); if (st.q.trim()) ex.push('search "' + st.q.trim() + '"');
+    if (st.age) ex.push('age ' + AGL[st.age]); if (st.area) ex.push('area ' + st.area); if (st.q.trim()) ex.push('search "' + st.q.trim() + '"');
     $('#flt').textContent = ex.length ? ' · ' + ex.join(' · ') : '';
+    $('#exScope').textContent = 'Export: ' + (st.whs.size ? selList().join(', ') : 'all warehouses') + (ex.length ? ' (filtered)' : '');
     $('#tagAge').hidden = !st.age; $('#tagAge').textContent = st.age ? 'Age: ' + AGL[st.age] + ' ×' : '';
     $('#tagArea').hidden = !st.area; $('#tagArea').textContent = st.area ? 'Area: ' + st.area + ' ×' : '';
-    drawSlots(); drawCards(); drawChips(); drawKpis(); drawAge(); drawArea(); drawDays(); drawTable();
+    drawCards(emptyMsg); drawChips(); drawKpis(); drawAge(); drawArea(); drawDays(); drawTable(emptyMsg);
   }
-  const when = (t) => new Date(t).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-  function drawSlots() {
-    $('#slots').replaceChildren(...WAREHOUSES.map((wh) => {
-      const d = S.data[wh];
-      const s = el('div', 'slot' + (d ? ' ok' : '')); s.dataset.wh = wh;
-      const row = el('div', 'row'); row.append(el('span', 'wh', wh));
-      const stx = el('span', 'st'); if (d) { stx.append(el('b', '', F(d.rows.length)), ' jobs'); } else stx.textContent = 'not loaded';
-      row.append(stx);
-      const info = el('div', 'st', d ? 'Loaded ' + when(d.at) : 'Drop its CSV here');
-      if (d && now() - d.at > 864e5) info.style.color = 'var(--o)';
-      const acts = el('div', 'acts');
-      const a = el('a', 'btn ob', 'Open report'); a.href = reportLink(wh); a.target = '_blank'; a.rel = 'noopener';
-      const b = el('button', 'btn' + (d ? '' : ' yb'), 'Load CSV'); b.type = 'button'; b.dataset.load = wh;
-      acts.append(a, b);
-      s.append(row, info, acts);
-      return s;
-    }));
-  }
-  function drawCards() {
-    const loaded = WAREHOUSES.filter((w) => S.data[w]);
-    if (!loaded.length) { $('#cards').replaceChildren(el('div', 'msg', 'No data loaded yet. Load at least one warehouse CSV above.')); return; }
-    $('#cards').replaceChildren(...loaded.map((wh) => {
+  function drawCards(emptyMsg) {
+    if (!RAW) { $('#cards').replaceChildren(el('div', 'msg' + (emptyMsg && /Could not/.test(emptyMsg) ? ' err' : ''), emptyMsg || 'Loading…')); return; }
+    $('#cards').replaceChildren(...WAREHOUSES.map((wh) => {
       const rows = L.filter((l) => l.wh === wh); const k = kpisOf(rows);
-      const b = el('button', 'card'); b.type = 'button'; b.dataset.wh = wh; b.setAttribute('aria-pressed', String(st.wh === wh));
+      const b = el('button', 'card'); b.type = 'button'; b.dataset.wh = wh; b.setAttribute('aria-pressed', String(st.whs.has(wh)));
       const top = el('div', 'card-top'); const sk = el('span', 'skus'); sk.append(el('b', '', F(k.locs)), ' locations'); top.append(el('span', 'wh', wh), sk);
-      const bar = el('div', 'bar'); bar.style.background = 'var(--line)';
+      const bar = el('div', 'bar');
       AG.forEach((a) => { const n = rows.filter((l) => l.ab === a.k).length; const i = el('i'); i.style.width = (100 * n / (rows.length || 1)) + '%'; i.style.background = a.c; bar.append(i); });
       const mini = el('div', 'mini');
       const part = (v, label, bad) => { const sp = el('span', bad ? 'bad' : ''); sp.append(el('b', '', F(v)), ' ' + label); return sp; };
@@ -437,15 +403,11 @@ const ONLY_GROUPING = 'incident_stocktake'; // only jobs with this grouping_key 
     }));
   }
   function drawChips() {
-    const whs = WAREHOUSES.filter((w) => S.data[w]);
-    $('#chips').replaceChildren(...['All', ...whs].map((w) => { const b = el('button', 'chip', w === 'All' ? 'All warehouses' : w); b.type = 'button'; b.dataset.wh = w; b.setAttribute('aria-pressed', String(w === st.wh)); return b; }));
+    const cnt = d3.rollup(L, (v) => v.length, (l) => l.wh);
+    const mk = (w, label, n) => { const b = el('button', 'chip', label); if (n != null) b.append(el('span', 'n', F(n))); b.type = 'button'; b.dataset.wh = w; b.setAttribute('aria-pressed', String(w === 'All' ? !st.whs.size : st.whs.has(w))); return b; };
+    $('#chips').replaceChildren(mk('All', 'All warehouses', L.length), ...WAREHOUSES.map((w) => mk(w, w, cnt.get(w) || 0)));
   }
-  function drawGrp() {
-    const g = [...new Set(L.map((l) => l.grp).filter(Boolean))].sort();
-    const s = $('#grp'); s.replaceChildren(new Option('All groupings', 'All'), ...g.map((x) => new Option(x, x)));
-    s.value = g.includes(st.grp) ? st.grp : 'All';
-  }
-  function drawKpis() { const k = kpisOf(baseView()); document.querySelectorAll('#kpis [data-k]').forEach((e) => { e.textContent = L.length ? F(k[e.dataset.k]) : '—'; }); }
+  function drawKpis() { const k = kpisOf(baseView()); document.querySelectorAll('#kpis [data-k]').forEach((e) => { e.textContent = RAW ? F(k[e.dataset.k]) : '—'; }); }
   function drawAge() {
     const rows = baseView('age'); const tot = rows.length || 1;
     const data = AG.map((a) => { const r = rows.filter((l) => l.ab === a.k); return { ...a, n: r.length, locs: new Set(r.map((l) => l.wh + '|' + l.loc)).size }; });
@@ -469,13 +431,13 @@ const ONLY_GROUPING = 'incident_stocktake'; // only jobs with this grouping_key 
   function drawArea() {
     const box = $('#areaChart'); box.replaceChildren();
     const rows = d3.rollups(baseView('area'), (v) => v.length, (l) => l.area).sort((a, b) => b[1] - a[1]).slice(0, 20);
-    if (!rows.length) { box.append(el('div', 'msg', 'No jobs for these filters.')); return; }
-    const W = Math.max(280, box.clientWidth), rowH = 26, H = rows.length * rowH + 6;
-    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H).attr('role', 'img').attr('aria-label', 'Pending jobs by area');
+    if (!rows.length) { box.append(el('div', 'msg', RAW ? 'No jobs for these filters.' : 'No data yet.')); return; }
+    const W = Math.max(280, box.clientWidth), rowH = 26, Hh = rows.length * rowH + 6;
+    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${Hh}`).attr('height', Hh).attr('role', 'img').attr('aria-label', 'Pending jobs by area');
     const L0 = 110, R = 50;
     const x = d3.scaleLinear([0, d3.max(rows, (r) => r[1])], [0, Math.max(10, W - L0 - R)]);
     const t = tipFor(box);
-    const g = svg.selectAll('g.r').data(rows).join('g').attr('class', 'r').attr('transform', (d, i) => `translate(0,${i * rowH + 3})`)
+    const g = svg.selectAll('g.r').data(rows).join('g').attr('class', 'r').attr('transform', (d, i) => `translate(0,${i * rowH + 3})`).style('cursor', 'pointer')
       .on('click', (e, d) => { st.area = st.area === d[0] ? null : d[0]; st.shown = 200; render(); });
     g.append('text').attr('x', L0 - 10).attr('y', rowH / 2 - 1).attr('dy', '.35em').attr('text-anchor', 'end').attr('font-size', 12).style('fill', (d) => (d[0] === st.area ? 'var(--y)' : 'var(--muted)')).text((d) => d[0]);
     g.append('rect').attr('x', L0).attr('y', 5).attr('height', rowH - 11).attr('rx', 4).attr('width', (d) => Math.max(2, x(d[1])))
@@ -486,42 +448,43 @@ const ONLY_GROUPING = 'incident_stocktake'; // only jobs with this grouping_key 
   function drawDays() {
     const box = $('#dayChart'); box.replaceChildren();
     const days = []; for (let i = 29; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); days.push(iso(d)); }
-    const cnt = d3.rollup(baseView(), (v) => v.length, (l) => l.day);
+    const base = baseView();
+    const cnt = d3.rollup(base, (v) => v.length, (l) => l.day);
     const data = days.map((d) => [d, cnt.get(d) || 0]);
-    const older = baseView().filter((l) => l.day < days[0]).length;
-    const W = Math.max(300, box.clientWidth), H = 190, m = { t: 18, r: 8, b: 26, l: 8 };
+    const older = base.filter((l) => l.day < days[0]).length;
+    const W = Math.max(300, box.clientWidth), Hh = 190, m = { t: 18, r: 8, b: 26, l: 8 };
     const x = d3.scaleBand(days, [m.l, W - m.r]).padding(0.18);
-    const y = d3.scaleLinear([0, d3.max(data, (d) => d[1]) || 1], [H - m.b, m.t]);
-    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H).attr('role', 'img').attr('aria-label', 'Pending jobs by creation day');
+    const y = d3.scaleLinear([0, d3.max(data, (d) => d[1]) || 1], [Hh - m.b, m.t]);
+    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${Hh}`).attr('height', Hh).attr('role', 'img').attr('aria-label', 'Pending jobs by creation day');
     const t = tipFor(box);
     svg.selectAll('rect').data(data).join('rect').attr('x', (d) => x(d[0])).attr('width', x.bandwidth()).attr('y', (d) => y(d[1])).attr('height', (d) => y(0) - y(d[1])).attr('rx', 3)
       .style('fill', (d) => (d[0] === days[29] ? 'var(--g)' : 'var(--b)'))
       .on('mousemove', (e, d) => showTip(box, t, e, d[0], F(d[1]) + ' jobs')).on('mouseleave', () => { t.hidden = true; });
     svg.selectAll('text.v').data(data.filter((d) => d[1])).join('text').attr('class', 'v').attr('x', (d) => x(d[0]) + x.bandwidth() / 2).attr('y', (d) => y(d[1]) - 4).attr('text-anchor', 'middle').attr('font-size', 10).style('fill', 'var(--muted)').text((d) => (x.bandwidth() > 16 ? d[1] : ''));
     const step = Math.ceil(30 / Math.max(1, Math.floor(W / 60)));
-    svg.selectAll('text.d').data(days.filter((d, i) => (29 - i) % step === 0)).join('text').attr('class', 'd').attr('x', (d) => x(d) + x.bandwidth() / 2).attr('y', H - 8).attr('text-anchor', 'middle').attr('font-size', 10.5).style('fill', 'var(--muted)').text((d) => d.slice(5));
+    svg.selectAll('text.d').data(days.filter((d, i) => (29 - i) % step === 0)).join('text').attr('class', 'd').attr('x', (d) => x(d) + x.bandwidth() / 2).attr('y', Hh - 8).attr('text-anchor', 'middle').attr('font-size', 10.5).style('fill', 'var(--muted)').text((d) => d.slice(5));
     if (older) box.append(el('p', 'note', F(older) + ' more pending jobs were created before ' + days[0] + '.'));
   }
-  function drawTable() {
-    $('#tbl').classList.toggle('single', st.wh !== 'All');
+  function drawTable(emptyMsg) {
+    $('#tbl').classList.toggle('single', st.whs.size === 1);
     document.querySelectorAll('#tbl th').forEach((th) => { const k = th.querySelector('button').dataset.sort; if (k === st.sortKey) th.setAttribute('aria-sort', st.sortDir > 0 ? 'ascending' : 'descending'); else th.removeAttribute('aria-sort'); });
     const rows = jobView(); const lim = st.shown;
     const frag = document.createDocumentFragment();
     rows.slice(0, lim).forEach((l) => {
       const tr = el('tr', l.age > 30 ? 'age-r' : l.age > 7 ? 'age-o' : '');
       const td = (c, v) => tr.append(el('td', c, v));
-      td('c-wh colwh', l.wh); td('c-sku', l.job); td('c-loc', l.loc); td('c-fam hide-sm', l.area); td('c-fam hide-sm', l.grp);
+      td('c-wh colwh', l.wh); td('c-sku', l.job); td('c-loc', l.loc); td('c-fam hide-sm', l.area);
       td('num hide-sm', F(l.prio)); td('c-date', l.created.slice(0, 16)); td('num age', F(l.age));
       frag.append(tr);
     });
     $('#tbody').replaceChildren(frag);
-    $('#count').textContent = rows.length ? `Showing ${F(Math.min(lim, rows.length))} of ${F(rows.length)} jobs` : (L.length ? 'No jobs match these filters.' : 'No data loaded yet.');
+    $('#count').textContent = rows.length ? `Showing ${F(Math.min(lim, rows.length))} of ${F(rows.length)} jobs` : RAW ? 'No jobs match these filters.' : (emptyMsg ? 'No data yet.' : 'Loading…');
     $('#more').hidden = rows.length <= lim;
   }
 
-  // ---------- exports ----------
+  // ---------- exports: selected warehouses, or all when none is selected ----------
   const stamp = () => iso(new Date()) + '_' + new Date().toTimeString().slice(0, 5).replace(':', '');
-  const jobsOut = () => jobView().map((l) => ({ Warehouse: l.wh, Job: l.job, Location: l.loc, Area: l.area, Grouping: l.grp, Priority: l.prio, Created: l.created, 'Age (days)': l.age, 'Pending for': AGL[l.ab] }));
+  const jobsOut = () => jobView().map((l) => ({ Warehouse: l.wh, Job: l.job, Location: l.loc, Area: l.area, 'Warehouse code': l.code, Priority: l.prio, Created: l.created, 'Age (days)': l.age, 'Pending for': AGL[l.ab] }));
   function toCSV(rows) {
     if (!rows.length) return '';
     const cols = Object.keys(rows[0]);
@@ -529,67 +492,53 @@ const ONLY_GROUPING = 'incident_stocktake'; // only jobs with this grouping_key 
     return '\uFEFF' + [cols.join(','), ...rows.map((r) => cols.map((c) => esc(r[c])).join(','))].join('\n');
   }
   function download(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); }
-  const scope = () => (st.wh === 'All' ? 'All' : st.wh);
+  function exportCSV() {
+    if (!RAW) { alert('No data loaded yet.'); return; }
+    const rows = jobsOut(); if (!rows.length) { alert('No jobs match these filters.'); return; }
+    download(new Blob([toCSV(rows)], { type: 'text/csv;charset=utf-8' }), `StockTake_pending_${scopeFile()}_${stamp()}.csv`);
+  }
   function exportXLSX() {
+    if (!RAW) { alert('No data loaded yet.'); return; }
     if (!window.XLSX) { alert('Excel export could not load. Check your connection and try again.'); return; }
     const wb = XLSX.utils.book_new();
     const add = (name, rows) => { const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ Note: 'No rows' }]); const cols = Object.keys(rows[0] || { Note: '' }); ws['!cols'] = cols.map((c) => ({ wch: Math.min(40, Math.max(c.length + 2, ...rows.slice(0, 300).map((r) => String(r[c] ?? '').length + 1))) })); XLSX.utils.book_append_sheet(wb, ws, name); };
-    add('Warehouses', WAREHOUSES.filter((w) => S.data[w]).map((w) => { const k = kpisOf(L.filter((l) => l.wh === w)); return { Warehouse: w, 'Pending jobs': k.jobs, Locations: k.locs, 'Created today': k.today, 'Over 7 days': k.d7, 'Over 30 days': k.d30, 'Oldest (days)': k.oldest, 'Loaded at': new Date(S.data[w].at).toLocaleString() }; }));
-    const base = baseView('age');
-    add('Aging', AG.map((a) => ({ 'Pending for': a.l, Jobs: base.filter((l) => l.ab === a.k).length })));
+    const info = XLSX.utils.aoa_to_sheet([['CAIID Pending Stock Take export'], [], ['Warehouses', scopeName()], ['Grouping', ONLY_GROUPING], ['Age filter', st.age ? AGL[st.age] : 'All'], ['Area filter', st.area || 'All'], ['Search', st.q.trim() || '—'], ['Data updated', updatedLabel], ['Exported', new Date().toLocaleString()]]);
+    info['!cols'] = [{ wch: 16 }, { wch: 50 }]; XLSX.utils.book_append_sheet(wb, info, 'Info');
+    const whs = st.whs.size ? selList() : WAREHOUSES;
+    const sum = whs.map((w) => { const k = kpisOf(baseView().filter((l) => l.wh === w)); return { Warehouse: w, 'Pending jobs': k.jobs, Locations: k.locs, 'Created today': k.today, 'Over 7 days': k.d7, 'Over 30 days': k.d30, 'Oldest (days)': k.oldest }; });
+    if (whs.length > 1) { const k = kpisOf(baseView()); sum.push({ Warehouse: 'Total', 'Pending jobs': k.jobs, Locations: k.locs, 'Created today': k.today, 'Over 7 days': k.d7, 'Over 30 days': k.d30, 'Oldest (days)': k.oldest }); }
+    add('Warehouses', sum);
+    const ab = baseView('age'); add('Aging', AG.map((a) => ({ 'Pending for': a.l, Jobs: ab.filter((l) => l.ab === a.k).length })));
     add('Areas', d3.rollups(baseView('area'), (v) => v.length, (l) => l.area).sort((a, b) => b[1] - a[1]).map(([a, n]) => ({ Area: a, Jobs: n })));
     add('Jobs', jobsOut());
-    XLSX.writeFile(wb, `StockTake_pending_${scope()}_${stamp()}.xlsx`);
+    XLSX.writeFile(wb, `StockTake_pending_${scopeFile()}_${stamp()}.xlsx`);
   }
-  const menu = $('#exportMenu'), mBtn = $('#exportBtn');
-  const closeMenu = () => { menu.hidden = true; mBtn.setAttribute('aria-expanded', 'false'); };
-  mBtn.addEventListener('click', (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; mBtn.setAttribute('aria-expanded', String(!menu.hidden)); });
-  document.addEventListener('click', (e) => { if (!menu.contains(e.target)) closeMenu(); });
-  menu.addEventListener('click', (e) => {
-    const b = e.target.closest('button[data-ex]'); if (!b) return; closeMenu();
-    if (!L.length) { alert('Load at least one warehouse CSV first.'); return; }
-    if (b.dataset.ex === 'xlsx') exportXLSX(); else download(new Blob([toCSV(jobsOut())], { type: 'text/csv;charset=utf-8' }), `StockTake_pending_${scope()}_${stamp()}.csv`);
-  });
+  $('#exCsv').addEventListener('click', exportCSV);
+  $('#exXlsx').addEventListener('click', exportXLSX);
 
   // ---------- controls ----------
-  let target = null;
-  $('#slots').addEventListener('click', (e) => { const b = e.target.closest('button[data-load]'); if (b) { target = b.dataset.load; $('#file').value = ''; $('#file').click(); } });
-  $('#file').addEventListener('change', (e) => { const f = e.target.files[0]; if (f && target) readFile(f, target); });
-  const dragOn = (zone, getWh) => {
-    zone.addEventListener('dragover', (e) => { e.preventDefault(); (getWh(e) || zone).classList.add('drag'); });
-    zone.addEventListener('dragleave', (e) => { (getWh(e) || zone).classList.remove('drag'); });
-    zone.addEventListener('drop', (e) => {
-      e.preventDefault(); const s = getWh(e); (s || zone).classList.remove('drag');
-      const files = [...e.dataTransfer.files];
-      if (s) { if (files[0]) readFile(files[0], s.dataset.wh); } else files.forEach((f) => readFile(f, null));
-    });
-  };
-  dragOn($('#slots'), (e) => e.target.closest('.slot'));
-  dragOn($('#drop'), () => null);
-  $('#from').value = S.from;
-  $('#from').addEventListener('change', (e) => { if (e.target.value) { S.from = e.target.value; save(); render(); } });
-  $('#clearAll').addEventListener('click', () => { if (confirm('Remove all loaded warehouse data from this browser?')) { S.data = {}; save(); build(); render(); } });
-  const pickWh = (w) => { st.wh = w; st.shown = 200; render(); };
-  $('#chips').addEventListener('click', (e) => { const b = e.target.closest('button[data-wh]'); if (b) pickWh(b.dataset.wh); });
-  $('#cards').addEventListener('click', (e) => { const b = e.target.closest('button[data-wh]'); if (b) pickWh(st.wh === b.dataset.wh ? 'All' : b.dataset.wh); });
+  const toggleWh = (w) => { if (w === 'All') st.whs.clear(); else if (st.whs.has(w)) st.whs.delete(w); else st.whs.add(w); st.shown = 200; render(); };
+  $('#chips').addEventListener('click', (e) => { const b = e.target.closest('button[data-wh]'); if (b) toggleWh(b.dataset.wh); });
+  $('#cards').addEventListener('click', (e) => { const b = e.target.closest('button[data-wh]'); if (b) toggleWh(b.dataset.wh); });
   let qt; $('#q').addEventListener('input', (e) => { clearTimeout(qt); qt = setTimeout(() => { st.q = e.target.value; st.shown = 200; render(); }, 200); });
   $('#ageChart').addEventListener('click', (e) => { const b = e.target.closest('button[data-age]'); if (b) { st.age = st.age === b.dataset.age ? null : b.dataset.age; st.shown = 200; render(); } });
   $('#tagAge').addEventListener('click', () => { st.age = null; render(); });
   $('#tagArea').addEventListener('click', () => { st.area = null; render(); });
-  $('#reset').addEventListener('click', () => { Object.assign(st, { wh: 'All', grp: 'All', q: '', age: null, area: null, sortKey: 'age', sortDir: -1, shown: 200 }); $('#q').value = ''; render(); });
+  $('#reset').addEventListener('click', () => { st.whs.clear(); Object.assign(st, { q: '', age: null, area: null, sortKey: 'age', sortDir: -1, shown: 200 }); $('#q').value = ''; render(); });
   $('#more').addEventListener('click', () => { st.shown += 200; drawTable(); });
   $('#tbl thead').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-sort]'); if (!b) return; const k = b.dataset.sort;
     if (k === st.sortKey) st.sortDir = -st.sortDir; else { st.sortKey = k; st.sortDir = ['age', 'prio'].includes(k) ? -1 : 1; }
     st.shown = 200; drawTable();
   });
+  $('#refresh').addEventListener('click', () => load(true));
   const setHdr = () => document.documentElement.style.setProperty('--hdr', $('#hdr').offsetHeight + 'px');
   setHdr();
-  let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { setHdr(); drawArea(); drawDays(); }, 150); });
-  // refresh ages and "today" links every 10 minutes
-  setInterval(() => { if (!document.hidden) { build(); render(); } }, 600000);
+  let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { setHdr(); if (RAW) { drawArea(); drawDays(); } }, 150); });
 
-  build(); render();
+  load(true);
+  setInterval(() => { if (!document.hidden) load(false); }, CHECK_EVERY_SECONDS * 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && RAW) load(false); });
 })();
 </script>
 </body>
