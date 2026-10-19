@@ -196,7 +196,7 @@ details.setup ol{margin:10px 0 4px;padding-left:20px;display:grid;gap:6px}
   </div>
 
   <section class="sec" id="warehouses">
-    <div><h2 class="h">Warehouse overview</h2><p class="note">Pending incident stock-take jobs per warehouse, for the dates and filters chosen below. Click cards or chips to pick one or more warehouses; click again to remove.</p></div>
+    <div><h2 class="h">Warehouse overview</h2></div>
     <div class="cards" id="cards"></div>
   </section>
 
@@ -235,14 +235,14 @@ details.setup ol{margin:10px 0 4px;padding-left:20px;display:grid;gap:6px}
     <section class="panel" id="aging">
       <div class="ph">
         <div class="ico" style="--ic:rgba(248,113,113,.14);--icc:var(--r)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg></div>
-        <div><h2 class="h">Aging</h2><p class="note">How long jobs have been pending since they were created. Click a row to filter.</p></div>
+        <div><h2 class="h">Aging</h2></div>
       </div>
       <div class="exrows" id="ageChart"></div>
     </section>
     <section class="panel" id="areas">
       <div class="ph">
         <div class="ico" style="--ic:rgba(96,165,250,.14);--icc:var(--b)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h12M4 12h16M4 18h8"/></svg></div>
-        <div><h2 class="h">Pending by area</h2><p class="note">Area is the start of the location code (for example ID01-A03). Top 20. Click a bar to filter.</p></div>
+        <div><h2 class="h">Pending by area</h2></div>
       </div>
       <div class="chart" id="areaChart"></div>
     </section>
@@ -251,7 +251,7 @@ details.setup ol{margin:10px 0 4px;padding-left:20px;display:grid;gap:6px}
   <section class="panel" id="daily">
     <div class="ph">
       <div class="ico" style="--ic:rgba(52,211,153,.14);--icc:var(--g)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></div>
-      <div><h2 class="h">Still pending, by creation day</h2><p class="note">Last 30 days. Each bar is the number of jobs created that day that are still pending.</p></div>
+      <div><h2 class="h">Still pending, by creation day</h2></div>
     </div>
     <div class="chart" id="dayChart"></div>
   </section>
@@ -259,7 +259,7 @@ details.setup ol{margin:10px 0 4px;padding-left:20px;display:grid;gap:6px}
   <section class="panel" id="jobsec">
     <div class="ph">
       <div class="ico" style="--ic:rgba(167,139,250,.16);--icc:var(--p)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M4 10h16M10 10v10"/></svg></div>
-      <div><h2 class="h">Pending jobs</h2><p class="note">Oldest first. Click a column to sort.</p></div>
+      <div><h2 class="h">Pending jobs</h2></div>
     </div>
     <div class="tablewrap">
       <table id="tbl">
@@ -277,15 +277,6 @@ details.setup ol{margin:10px 0 4px;padding-left:20px;display:grid;gap:6px}
     </div>
     <div class="foot"><span id="count"></span><button class="btn" id="more" type="button" hidden>Show 200 more</button></div>
   </section>
-
-  <details class="setup">
-    <summary>How to refresh the data</summary>
-    <ol>
-      <li>Drag this button to your bookmarks bar (once): <a class="bmk" id="bmk" href="#">Refresh Stock Take</a></li>
-      <li>Open any page on grocery-tools.noon.team (you must be logged in) and click the bookmark. It pulls every pending incident stock-take job for CAIID01 to CAIID07, created up to today.</li>
-      <li>This page picks up the new data within a minute, or click Refresh.</li>
-    </ol>
-  </details>
 </main>
 
 <script>
@@ -330,9 +321,7 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
   const H = { apikey: SB_READ_KEY, Authorization: 'Bearer ' + SB_READ_KEY };
   const API = SB_URL + '/rest/v1/stocktake_snapshots?id=eq.1&select=';
   let RAW = null, L = [], lastAt = null, updatedLabel = '';
-  $('#bmk').href = BOOKMARK;
-  $('#bmk').addEventListener('click', (e) => { e.preventDefault(); alert('Drag this button to your bookmarks bar, then click it on grocery-tools.noon.team.'); });
-
+  
   // ---------- data ----------
   const areaOf = (loc) => { const p = String(loc || '').split('-'); return p.length > 1 ? p[0] + '-' + p[1] : loc || '(none)'; };
   function build() {
@@ -364,7 +353,7 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
       const res = await fetch(API + 'updated_at,row_count,cols,rows', { headers: H, cache: 'no-store' });
       if (!res.ok) throw new Error('Supabase answered ' + res.status + (res.status === 404 ? ' (run the setup SQL first)' : ''));
       const j = await res.json();
-      if (!j[0]) { RAW = null; setLive('err', 'No data yet'); render('No data yet. Click the Refresh Stock Take bookmark on grocery-tools.noon.team (see "How to refresh the data" at the bottom).'); return; }
+      if (!j[0]) { RAW = null; setLive('err', 'No data yet'); render('No data yet. Click the Refresh Stock Take bookmark on grocery-tools.noon.team.'); return; }
       RAW = j[0]; lastAt = RAW.updated_at; updatedLabel = when(lastAt);
       $('#loadedAt').textContent = updatedLabel;
       build(); setLive('ok', 'LIVE'); render();
@@ -477,7 +466,6 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
     svg.selectAll('text.v').data(data.filter((d) => d[1])).join('text').attr('class', 'v').attr('x', (d) => x(d[0]) + x.bandwidth() / 2).attr('y', (d) => y(d[1]) - 4).attr('text-anchor', 'middle').attr('font-size', 10).style('fill', 'var(--muted)').text((d) => (x.bandwidth() > 16 ? d[1] : ''));
     const step = Math.ceil(30 / Math.max(1, Math.floor(W / 60)));
     svg.selectAll('text.d').data(days.filter((d, i) => (29 - i) % step === 0)).join('text').attr('class', 'd').attr('x', (d) => x(d) + x.bandwidth() / 2).attr('y', Hh - 8).attr('text-anchor', 'middle').attr('font-size', 10.5).style('fill', 'var(--muted)').text((d) => d.slice(5));
-    if (older) box.append(el('p', 'note', F(older) + ' more pending jobs were created before ' + days[0] + '.'));
   }
   function drawTable(emptyMsg) {
     $('#tbl').classList.toggle('single', st.whs.size === 1);
