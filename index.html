@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CAIID Pending Stock Take</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+
+:root{--bg:#0a1222;--panel:#0f1a2e;--panel2:#15223b;--line:#22324f;--fg:#eef2fa;--muted:#8e9bb6;--y:#ffe500;--yink:#16140a;--yd:rgba(255,229,0,.10);--g:#34d399;--gd:rgba(52,211,153,.14);--r:#f87171;--o:#fb923c;--a:#fbbf24;--p:#a78bfa;--b:#60a5fa;--b2:#93c5fd;--b3:#3b82f6;--gr:#64748b;color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--bg)}
+body{color:var(--fg);font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;font-size:14px;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+b{font-weight:700}
+a{color:inherit}
+.top{position:sticky;top:0;z-index:20;background:rgba(10,18,34,.94);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.top-in{max-width:1400px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px));display:flex;flex-wrap:wrap;align-items:center;gap:12px 18px}
+.badge{background:var(--y);color:var(--yink);font-weight:800;font-size:18px;padding:11px 12px;border-radius:12px;line-height:1;box-shadow:0 0 0 5px var(--yd)}
+.brand{font-size:20px;font-weight:800;line-height:1.1;margin:0}
+.brand .y{color:var(--y)}
+.sub{color:var(--muted);font-size:12.5px;margin:3px 0 0}
+.top-r{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.nav{max-width:1400px;margin:0 auto;padding:0 max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));display:flex;gap:6px;flex-wrap:wrap}
+.nav a{text-decoration:none;color:var(--muted);font-weight:600;font-size:13px;padding:6px 12px;border-radius:999px;border:1px solid transparent}
+.nav a:hover{color:var(--fg);border-color:var(--line)}
+.pill{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--panel);padding:7px 12px;border-radius:999px;font-size:12.5px;color:var(--muted)}
+.pill b{color:var(--fg)}
+.live{border-color:rgba(52,211,153,.35);color:var(--g);font-weight:700}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--g);box-shadow:0 0 0 4px var(--gd)}
+.live.err{border-color:rgba(248,113,113,.4);color:var(--r)}
+.live.err .dot{background:var(--r);box-shadow:0 0 0 4px rgba(248,113,113,.15)}
+.live.busy .dot{animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.3}}
+.menu{position:relative}
+.menu-list{position:absolute;right:0;top:calc(100% + 6px);background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:6px;display:grid;min-width:210px;box-shadow:0 12px 32px rgba(0,0,0,.45);z-index:30}
+.menu-list button{appearance:none;border:0;background:none;color:var(--fg);font:inherit;font-size:13px;font-weight:600;text-align:left;padding:9px 10px;border-radius:8px;cursor:pointer}
+.menu-list button:hover{background:var(--yd)}
+.menu-list span{display:block;color:var(--muted);font-weight:400;font-size:11.5px}
+.wrap{max-width:1400px;margin:0 auto;padding:22px max(16px,env(safe-area-inset-right,0px)) 48px max(16px,env(safe-area-inset-left,0px));display:grid;gap:22px}
+.eyebrow{display:flex;align-items:center;gap:10px;color:var(--y);font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase;margin:0 0 4px}
+.eyebrow::before{content:"";width:22px;height:3px;border-radius:2px;background:var(--r)}
+.h{font-size:19px;font-weight:800;margin:0}
+.h1{font-size:30px;font-weight:800;margin:0;letter-spacing:-.01em}
+.h1 .y{color:var(--y)}
+.note{color:var(--muted);font-size:13px;margin:3px 0 0;max-width:80ch}
+.filters{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px;position:sticky;top:var(--hdr,112px);z-index:10}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{appearance:none;border:1px solid var(--line);background:var(--panel2);color:var(--fg);font:inherit;font-size:13px;font-weight:700;padding:8px 13px;border-radius:999px;cursor:pointer}
+.chip:hover{border-color:var(--y)}
+.chip[aria-pressed=true]{background:var(--y);color:var(--yink);border-color:var(--y)}
+.tag{appearance:none;border:1px solid var(--y);background:var(--yd);color:var(--y);font:inherit;font-size:12.5px;font-weight:700;padding:7px 12px;border-radius:999px;cursor:pointer}
+.in{appearance:none;background:var(--panel2);border:1px solid var(--line);color:var(--fg);font:inherit;font-size:13px;padding:9px 12px;border-radius:10px;min-width:0}
+select.in{padding-right:28px;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 15px) 55%,calc(100% - 10px) 55%;background-size:5px 5px;background-repeat:no-repeat}
+.search{flex:1 1 220px}
+.btn{appearance:none;border:1px solid var(--line);background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:600;padding:9px 13px;border-radius:10px;cursor:pointer}
+.btn:hover{color:var(--fg);border-color:var(--muted)}
+.btn.yb{background:var(--y);color:var(--yink);border-color:var(--y);font-weight:800}
+.btn.ob{color:var(--fg);border-color:var(--line);background:var(--panel)}
+:focus-visible{outline:2px solid var(--y);outline-offset:2px}
+.sec{display:grid;gap:12px;min-width:0;scroll-margin-top:190px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,210px),1fr));gap:12px}
+.card{text-align:left;appearance:none;font:inherit;color:inherit;background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:16px;padding:16px;display:grid;gap:9px;align-content:start;cursor:pointer}
+.card:hover{border-color:#3a4f78}
+.card[aria-pressed=true]{border-color:var(--y);box-shadow:inset 0 0 0 1px var(--y)}
+.card-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.wh{color:var(--y);font-weight:800;font-size:15px}
+.skus{color:var(--muted);font-size:12px}
+.skus b{color:var(--fg)}
+.big{font-size:30px;font-weight:800;line-height:1.05;letter-spacing:-.01em}
+.lbl{color:var(--muted);font-size:12px}
+.bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden;display:flex}
+.bar i{display:block;height:100%;background:var(--y)}
+.bar i+i{background:var(--p)}
+.mini{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--muted)}
+.mini b{color:var(--fg)}
+.mini .bad b{color:var(--r)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:12px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;position:relative;overflow:hidden;display:grid;gap:6px;align-content:start}
+.kpi::before{content:"";position:absolute;left:16px;right:16px;top:0;height:3px;border-radius:0 0 3px 3px;background:var(--k)}
+.kpi .big{font-size:27px}
+.kpi .lbl{font-size:12.5px;font-weight:600}
+.panel .kpi{background:var(--panel2)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:16px;align-items:start}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px;display:grid;gap:14px;align-content:start;min-width:0;scroll-margin-top:190px}
+.ph{display:flex;gap:12px;align-items:flex-start}
+.ico{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;flex:none;background:var(--ic);color:var(--icc)}
+.ico svg{width:20px;height:20px}
+.chart{position:relative;min-height:200px}
+.tip{position:absolute;pointer-events:none;background:#1b2843;border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:12px;box-shadow:0 8px 24px rgba(0,0,0,.45);white-space:nowrap;z-index:3}
+.tip span{color:var(--muted);display:block}
+/* expiry buckets */
+.exrows{display:grid;gap:4px}
+.exhead,.exrow{display:grid;grid-template-columns:minmax(118px,150px) minmax(60px,1fr) 84px 54px 78px;align-items:center;gap:12px;padding:8px 10px}
+.exhead{color:var(--muted);font-size:11.5px;font-weight:600;padding-block:2px}
+.exhead span:nth-child(n+3){text-align:right}
+.exrow{appearance:none;font:inherit;color:inherit;background:transparent;border:1px solid transparent;border-radius:12px;cursor:pointer;text-align:left}
+.exrow:hover{background:var(--panel2)}
+.exrow[aria-pressed=true]{border-color:var(--y);background:var(--yd)}
+.exl{display:flex;align-items:center;gap:8px;font-weight:600;white-space:nowrap}
+.exl i{width:10px;height:10px;border-radius:3px;flex:none}
+.extrack{height:12px;background:var(--line);border-radius:6px;overflow:hidden}
+.extrack i{display:block;height:100%;border-radius:6px;min-width:2px}
+.exq{text-align:right;font-weight:800}
+.exp,.exs{text-align:right;color:var(--muted);font-size:12px}
+.ex-warn{display:flex;gap:10px;flex-wrap:wrap}
+.ex-warn .pill b.r{color:var(--r)} .ex-warn .pill b.o{color:var(--o)}
+@media (max-width:560px){.exhead,.exrow{grid-template-columns:minmax(100px,1fr) minmax(50px,1fr) 70px}.exp,.exs,.exhead span:nth-child(n+4){display:none}}
+/* tables */
+.tablewrap{max-height:620px;overflow:auto;border:1px solid var(--line);border-radius:14px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{position:sticky;top:0;background:var(--panel2);text-align:left;font-weight:700;color:var(--muted);padding:0;z-index:1;white-space:nowrap}
+th button{appearance:none;border:0;background:none;color:inherit;font:inherit;padding:11px 12px;cursor:pointer;width:100%;text-align:inherit}
+th[aria-sort] button{color:var(--y)}
+th[aria-sort=descending] button::after{content:" ↓"}
+th[aria-sort=ascending] button::after{content:" ↑"}
+th.num{text-align:right}
+th.plain{padding:11px 12px}
+td{padding:9px 12px;border-top:1px solid var(--line);vertical-align:middle}
+td.num{text-align:right;white-space:nowrap}
+tbody tr:nth-child(even){background:rgba(255,255,255,.025)}
+tbody tr:hover{background:var(--yd)}
+.c-wh{font-weight:800;color:var(--y);white-space:nowrap}
+.c-sku{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:var(--muted);white-space:nowrap}
+.c-loc{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;white-space:nowrap}
+.c-title{font-weight:600;min-width:180px}
+.c-fam{color:var(--muted);white-space:nowrap}
+.c-date{white-space:nowrap}
+.c-date.r{color:var(--r);font-weight:700}.c-date.o{color:var(--o);font-weight:700}
+.loc{display:inline-flex;align-items:center;gap:8px;justify-content:flex-end}
+.track{width:64px;height:6px;background:var(--line);border-radius:3px;overflow:hidden;display:inline-block}
+.track i{display:block;height:100%;background:var(--g);border-radius:3px}
+.arrow{color:var(--muted);padding-inline:4px}
+.pr{display:inline-block;font-size:11.5px;font-weight:800;padding:4px 9px;border-radius:999px;white-space:nowrap}
+.pr1{background:rgba(52,211,153,.16);color:var(--g)}
+.pr2{background:rgba(255,229,0,.14);color:var(--y)}
+.pr3{background:rgba(96,165,250,.16);color:var(--b)}
+.pr4{background:rgba(167,139,250,.16);color:var(--p)}
+.yes{color:var(--g);font-weight:700}.no{color:var(--muted)}
+.zt{display:inline-block;font-size:11.5px;font-weight:800;padding:4px 9px;border-radius:999px;white-space:nowrap}
+.zt.live{background:rgba(248,113,113,.16);color:var(--r)}
+.zt.held{background:rgba(52,211,153,.16);color:var(--g)}
+.zt.unk{background:rgba(142,155,182,.16);color:var(--muted)}
+table.single .colwh{display:none}
+@media (max-width:760px){.hide-sm{display:none}.h1{font-size:24px}.filters{position:static}}
+.foot{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;color:var(--muted);font-size:12.5px}
+.sk{display:block;height:100%;min-height:inherit;border-radius:14px;background:linear-gradient(90deg,var(--panel2),#1b2a47,var(--panel2));background-size:200% 100%;animation:sh 1.4s infinite}
+@keyframes sh{to{background-position:-200% 0}}
+.msg{display:flex;align-items:center;justify-content:center;gap:8px;color:var(--muted);font-size:13px;min-height:120px;text-align:center;padding:16px;border:1px dashed var(--line);border-radius:14px}
+.msg.err::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--r);flex:none}
+@media (prefers-reduced-motion:reduce){.sk,.live.busy .dot{animation:none}html{scroll-behavior:auto}}
+html{scroll-behavior:smooth}
+
+/* stock take */
+.slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,200px),1fr));gap:10px}
+.slot{background:var(--panel2);border:1px dashed var(--line);border-radius:14px;padding:12px;display:grid;gap:8px;align-content:start}
+.slot.drag{border-color:var(--y);background:var(--yd)}
+.slot.ok{border-style:solid}
+.slot .row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.slot .st{font-size:12px;color:var(--muted)}
+.slot .st b{color:var(--fg)}
+.slot .acts{display:flex;gap:6px;flex-wrap:wrap}
+.slot .btn{padding:7px 10px;font-size:12.5px;text-decoration:none;display:inline-block}
+.dates{display:flex;flex-wrap:wrap;gap:10px;align-items:center;color:var(--muted);font-size:13px}
+.dates b{color:var(--fg)}
+.bars .r{cursor:pointer}
+tr.age-r td.age{color:var(--r);font-weight:800}
+tr.age-o td.age{color:var(--o);font-weight:700}
+.drop{border:1px dashed var(--line);border-radius:14px;padding:14px;text-align:center;color:var(--muted);font-size:13px}
+.drop.drag{border-color:var(--y);color:var(--y);background:var(--yd)}
+</style>
+</head>
+<body>
+<header class="top" id="hdr">
+  <div class="top-in">
+    <div class="badge" aria-hidden="true">ST</div>
+    <div>
+      <p class="brand"><span class="y">CAIID</span> Pending Stock Take</p>
+      <p class="sub">grouping_key: incident_stocktake · CAIID01 to CAIID07</p>
+    </div>
+    <div class="top-r">
+      <span class="pill">Jobs created <b id="range">—</b></span>
+      <div class="menu">
+        <button class="btn ob" id="exportBtn" type="button" aria-haspopup="true" aria-expanded="false">Export ▾</button>
+        <div class="menu-list" id="exportMenu" hidden>
+          <button type="button" data-ex="xlsx">Export as Excel<span>Summary, aging, areas and jobs, current filters</span></button>
+          <button type="button" data-ex="csv">Export jobs as CSV<span>Job table with current filters</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <nav class="nav" aria-label="Sections">
+    <a href="#pull">Load data</a><a href="#warehouses">Overview</a><a href="#aging">Aging</a><a href="#areas">Areas</a><a href="#jobsec">Jobs</a>
+  </nav>
+</header>
+
+<main class="wrap">
+  <div>
+    <p class="eyebrow">Inventory control</p>
+    <h1 class="h1">Pending <span class="y">stock take</span></h1>
+    <p class="note">Showing <b id="selName" style="color:var(--y)">All warehouses</b><span id="flt"></span></p>
+  </div>
+
+  <section class="panel" id="pull">
+    <div class="ph">
+      <div class="ico" style="--ic:rgba(255,229,0,.12);--icc:var(--y)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></div>
+      <div><h2 class="h">Load data</h2><p class="note">For each warehouse: open its report (pending stock_take, created up to today), click Export CSV there, then drop the file on that warehouse's card or click Load CSV. Loaded data stays in this browser until you load a newer file.</p></div>
+    </div>
+    <div class="dates">
+      <label for="from">From</label><input class="in" id="from" type="date" value="2026-05-01">
+      <span>to <b id="today">today</b> (always the current date)</span>
+      <button class="btn" id="clearAll" type="button">Clear loaded data</button>
+    </div>
+    <div class="slots" id="slots"></div>
+    <div class="drop" id="drop">Or drop several CSVs here at once. Files from a warehouse you loaded before are matched automatically.</div>
+    <input type="file" id="file" accept=".csv,text/csv" hidden>
+  </section>
+
+  <section class="sec" id="warehouses">
+    <div><h2 class="h">Warehouse overview</h2><p class="note">Pending jobs per warehouse. Click a card to focus on it.</p></div>
+    <div class="cards" id="cards"></div>
+  </section>
+
+  <div class="filters" id="filters">
+    <div class="chips" id="chips" role="group" aria-label="Warehouse"></div>
+    <input class="in search" id="q" type="search" placeholder="Search job, location or area" aria-label="Search job, location or area">
+    <button class="tag" id="tagAge" type="button" hidden></button>
+    <button class="tag" id="tagArea" type="button" hidden></button>
+    <button class="btn" id="reset" type="button">Reset filters</button>
+  </div>
+
+  <section class="kpis" id="kpis">
+    <div class="kpi" style="--k:var(--y)"><span class="lbl">Pending jobs</span><span class="big" data-k="jobs">—</span></div>
+    <div class="kpi" style="--k:var(--b)"><span class="lbl">Unique locations</span><span class="big" data-k="locs">—</span></div>
+    <div class="kpi" style="--k:var(--g)"><span class="lbl">Created today</span><span class="big" data-k="today">—</span></div>
+    <div class="kpi" style="--k:var(--o)"><span class="lbl">Older than 7 days</span><span class="big" data-k="d7">—</span></div>
+    <div class="kpi" style="--k:var(--r)"><span class="lbl">Older than 30 days</span><span class="big" data-k="d30">—</span></div>
+    <div class="kpi" style="--k:var(--p)"><span class="lbl">Oldest (days)</span><span class="big" data-k="oldest">—</span></div>
+  </section>
+
+  <div class="grid2">
+    <section class="panel" id="aging">
+      <div class="ph">
+        <div class="ico" style="--ic:rgba(248,113,113,.14);--icc:var(--r)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg></div>
+        <div><h2 class="h">Aging</h2><p class="note">How long jobs have been pending since they were created. Click a row to filter the jobs.</p></div>
+      </div>
+      <div class="exrows" id="ageChart"></div>
+    </section>
+    <section class="panel" id="areas">
+      <div class="ph">
+        <div class="ico" style="--ic:rgba(96,165,250,.14);--icc:var(--b)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h12M4 12h16M4 18h8"/></svg></div>
+        <div><h2 class="h">Pending by area</h2><p class="note">Area is the start of the location code (for example ID01-A03). Click a bar to filter.</p></div>
+      </div>
+      <div class="chart bars" id="areaChart"></div>
+    </section>
+  </div>
+
+  <section class="panel" id="daily">
+    <div class="ph">
+      <div class="ico" style="--ic:rgba(52,211,153,.14);--icc:var(--g)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></div>
+      <div><h2 class="h">Still pending, by creation day</h2><p class="note">Last 30 days. Each bar is the number of jobs created that day that are still pending.</p></div>
+    </div>
+    <div class="chart" id="dayChart"></div>
+  </section>
+
+  <section class="panel" id="jobsec">
+    <div class="ph">
+      <div class="ico" style="--ic:rgba(167,139,250,.16);--icc:var(--p)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M4 10h16M10 10v10"/></svg></div>
+      <div><h2 class="h">Pending jobs</h2><p class="note">Oldest first. Click a column to sort.</p></div>
+    </div>
+    <div class="tablewrap">
+      <table id="tbl">
+        <thead><tr>
+          <th class="colwh"><button type="button" data-sort="wh">Warehouse</button></th>
+          <th><button type="button" data-sort="job">Job</button></th>
+          <th><button type="button" data-sort="loc">Location</button></th>
+          <th class="hide-sm"><button type="button" data-sort="area">Area</button></th>
+          <th class="hide-sm"><button type="button" data-sort="grp">Grouping</button></th>
+          <th class="num hide-sm"><button type="button" data-sort="prio">Priority</button></th>
+          <th><button type="button" data-sort="created">Created</button></th>
+          <th class="num"><button type="button" data-sort="age">Age (days)</button></th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div class="foot"><span id="count"></span><button class="btn" id="more" type="button" hidden>Show 200 more</button></div>
+  </section>
+</main>
+
+<script>
+/* =====================================================================
+   SETTINGS
+   ===================================================================== */
+const WAREHOUSES = ['CAIID01', 'CAIID02', 'CAIID03', 'CAIID04', 'CAIID05', 'CAIID06', 'CAIID07'];
+const REPORT_URL = 'https://grocery-tools.noon.team/group/dcss/subgroup/jobs/report/stocktake_jobs';
+const STORE_KEY = 'caiid_stocktake_v1';
+const ONLY_GROUPING = 'incident_stocktake'; // only jobs with this grouping_key are counted
+
+(function () {
+  const F = d3.format(',');
+  const $ = (s) => document.querySelector(s);
+  const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+  const iso = (d) => { const z = new Date(d.getTime() - d.getTimezoneOffset() * 6e4); return z.toISOString().slice(0, 10); };
+  const AG = [
+    { k: 'a0', l: 'Under 1 day', c: 'var(--g)', t: (d) => d < 1 },
+    { k: 'a1', l: '1–3 days', c: 'var(--b2)', t: (d) => d < 4 },
+    { k: 'a4', l: '4–7 days', c: 'var(--y)', t: (d) => d < 8 },
+    { k: 'a8', l: '8–14 days', c: 'var(--a)', t: (d) => d < 15 },
+    { k: 'a15', l: '15–30 days', c: 'var(--o)', t: (d) => d <= 30 },
+    { k: 'a31', l: 'Over 30 days', c: 'var(--r)', t: () => true },
+  ];
+  const AGL = Object.fromEntries(AG.map((a) => [a.k, a.l]));
+  const ageBucket = (d) => AG.find((a) => a.t(d)).k;
+  const st = { wh: 'All', grp: 'All', q: '', age: null, area: null, sortKey: 'age', sortDir: -1, shown: 200 };
+
+  // ---------- storage: { from, data: { CAIID01: { at, file, code, rows: [...] } }, codes: { W00840432EG: 'CAIID01' } } ----------
+  let S = { from: '2026-05-01', data: {}, codes: {} };
+  try { const raw = localStorage.getItem(STORE_KEY); if (raw) S = Object.assign(S, JSON.parse(raw)); } catch (e) {}
+  const save = () => { try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch (e) { alert('This browser could not save the data; it will be lost on reload.'); } };
+
+  const reportLink = (wh) => {
+    const u = new URL(REPORT_URL);
+    u.searchParams.set('job_status', 'pending');
+    u.searchParams.set('partner_warehouse_code', wh);
+    u.searchParams.set('process_type', 'stock_take');
+    u.searchParams.set('job_created_date_from', S.from);
+    u.searchParams.set('job_created_date_to', iso(new Date()));
+    return u.toString();
+  };
+
+  function parseCSV(text) {
+    const rows = d3.csvParse(text.replace(/^\uFEFF/, ''));
+    if (!rows.columns.includes('job_location_code') || !rows.columns.includes('job_creation_date')) throw new Error('This file has no job_location_code or job_creation_date column. Is it the Stocktake Jobs export?');
+    return rows.filter((r) => (r.jobNr || r.job_location_code) && String(r.grouping_key || '').trim() === ONLY_GROUPING).map((r) => ({
+      job: r.jobNr || '', loc: r.job_location_code || '', code: r.warehouse_code || '', grp: r.grouping_key || '', prio: +r.job_priority || 0,
+      status: r.job_status || '', created: String(r.job_creation_date || '').replace('T', ' ').slice(0, 19), user: r.username || '',
+    }));
+  }
+  function store(wh, rows, file) {
+    const codes = [...new Set(rows.map((r) => r.code).filter(Boolean))];
+    codes.forEach((c) => { S.codes[c] = wh; });
+    S.data[wh] = { at: Date.now(), file, code: codes.join(', '), rows };
+    save(); build(); render();
+  }
+  async function readFile(file, wh) {
+    try {
+      const rows = parseCSV(await file.text());
+      if (!wh) {
+        const codes = [...new Set(rows.map((r) => r.code).filter(Boolean))];
+        wh = codes.length === 1 ? S.codes[codes[0]] : null;
+        if (!wh) { alert(file.name + ': I can\'t tell which warehouse this file is for yet. Drop it on its warehouse card the first time.'); return; }
+      }
+      store(wh, rows, file.name);
+    } catch (e) { alert(file.name + ': ' + e.message); }
+  }
+
+  // ---------- model ----------
+  let L = [];
+  const now = () => Date.now();
+  const areaOf = (loc) => { const p = loc.split('-'); return p.length > 1 ? p[0] + '-' + p[1] : loc || '(none)'; };
+  function build() {
+    const t = now(), today = iso(new Date());
+    L = [];
+    for (const wh of WAREHOUSES) {
+      const d = S.data[wh]; if (!d) continue;
+      for (const r of d.rows) {
+        if (r.grp !== ONLY_GROUPING) continue;
+        const ms = Date.parse(r.created.replace(' ', 'T'));
+        const age = isNaN(ms) ? 0 : Math.max(0, Math.floor((t - ms) / 864e5));
+        L.push({ wh, job: r.job, loc: r.loc, area: areaOf(r.loc), grp: r.grp, prio: r.prio, created: r.created, day: r.created.slice(0, 10), isToday: r.created.slice(0, 10) === today, age, ab: ageBucket(age) });
+      }
+    }
+  }
+  const matchQ = (q, ...v) => !q || v.some((x) => String(x || '').toLowerCase().includes(q));
+  const baseView = (skip) => {
+    const q = st.q.trim().toLowerCase();
+    return L.filter((l) => (st.wh === 'All' || l.wh === st.wh) && (st.grp === 'All' || l.grp === st.grp) && (skip === 'age' || !st.age || l.ab === st.age) && (skip === 'area' || !st.area || l.area === st.area) && matchQ(q, l.job, l.loc, l.area));
+  };
+  function jobView() {
+    const rows = baseView();
+    rows.sort((a, b) => {
+      const va = a[st.sortKey], vb = b[st.sortKey];
+      const c = typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb));
+      return c * st.sortDir || b.age - a.age || a.loc.localeCompare(b.loc);
+    });
+    return rows;
+  }
+  const kpisOf = (rows) => ({ jobs: rows.length, locs: new Set(rows.map((l) => l.wh + '|' + l.loc)).size, today: rows.filter((l) => l.isToday).length, d7: rows.filter((l) => l.age > 7).length, d30: rows.filter((l) => l.age > 30).length, oldest: d3.max(rows, (l) => l.age) ?? 0 });
+
+  // ---------- render ----------
+  function render() {
+    $('#today').textContent = iso(new Date());
+    $('#range').textContent = S.from + ' → today';
+    $('#selName').textContent = st.wh === 'All' ? 'All warehouses' : st.wh;
+    const ex = [];
+    if (st.grp !== 'All') ex.push(st.grp); if (st.age) ex.push('age ' + AGL[st.age]); if (st.area) ex.push('area ' + st.area); if (st.q.trim()) ex.push('search "' + st.q.trim() + '"');
+    $('#flt').textContent = ex.length ? ' · ' + ex.join(' · ') : '';
+    $('#tagAge').hidden = !st.age; $('#tagAge').textContent = st.age ? 'Age: ' + AGL[st.age] + ' ×' : '';
+    $('#tagArea').hidden = !st.area; $('#tagArea').textContent = st.area ? 'Area: ' + st.area + ' ×' : '';
+    drawSlots(); drawCards(); drawChips(); drawKpis(); drawAge(); drawArea(); drawDays(); drawTable();
+  }
+  const when = (t) => new Date(t).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  function drawSlots() {
+    $('#slots').replaceChildren(...WAREHOUSES.map((wh) => {
+      const d = S.data[wh];
+      const s = el('div', 'slot' + (d ? ' ok' : '')); s.dataset.wh = wh;
+      const row = el('div', 'row'); row.append(el('span', 'wh', wh));
+      const stx = el('span', 'st'); if (d) { stx.append(el('b', '', F(d.rows.length)), ' jobs'); } else stx.textContent = 'not loaded';
+      row.append(stx);
+      const info = el('div', 'st', d ? 'Loaded ' + when(d.at) : 'Drop its CSV here');
+      if (d && now() - d.at > 864e5) info.style.color = 'var(--o)';
+      const acts = el('div', 'acts');
+      const a = el('a', 'btn ob', 'Open report'); a.href = reportLink(wh); a.target = '_blank'; a.rel = 'noopener';
+      const b = el('button', 'btn' + (d ? '' : ' yb'), 'Load CSV'); b.type = 'button'; b.dataset.load = wh;
+      acts.append(a, b);
+      s.append(row, info, acts);
+      return s;
+    }));
+  }
+  function drawCards() {
+    const loaded = WAREHOUSES.filter((w) => S.data[w]);
+    if (!loaded.length) { $('#cards').replaceChildren(el('div', 'msg', 'No data loaded yet. Load at least one warehouse CSV above.')); return; }
+    $('#cards').replaceChildren(...loaded.map((wh) => {
+      const rows = L.filter((l) => l.wh === wh); const k = kpisOf(rows);
+      const b = el('button', 'card'); b.type = 'button'; b.dataset.wh = wh; b.setAttribute('aria-pressed', String(st.wh === wh));
+      const top = el('div', 'card-top'); const sk = el('span', 'skus'); sk.append(el('b', '', F(k.locs)), ' locations'); top.append(el('span', 'wh', wh), sk);
+      const bar = el('div', 'bar'); bar.style.background = 'var(--line)';
+      AG.forEach((a) => { const n = rows.filter((l) => l.ab === a.k).length; const i = el('i'); i.style.width = (100 * n / (rows.length || 1)) + '%'; i.style.background = a.c; bar.append(i); });
+      const mini = el('div', 'mini');
+      const part = (v, label, bad) => { const sp = el('span', bad ? 'bad' : ''); sp.append(el('b', '', F(v)), ' ' + label); return sp; };
+      mini.append(part(k.today, 'today'), part(k.d7, 'over 7d', k.d7 > 0), part(k.oldest, 'days oldest', k.oldest > 30));
+      b.append(top, el('div', 'big', F(k.jobs)), el('div', 'lbl', 'Pending jobs'), bar, mini);
+      return b;
+    }));
+  }
+  function drawChips() {
+    const whs = WAREHOUSES.filter((w) => S.data[w]);
+    $('#chips').replaceChildren(...['All', ...whs].map((w) => { const b = el('button', 'chip', w === 'All' ? 'All warehouses' : w); b.type = 'button'; b.dataset.wh = w; b.setAttribute('aria-pressed', String(w === st.wh)); return b; }));
+  }
+  function drawGrp() {
+    const g = [...new Set(L.map((l) => l.grp).filter(Boolean))].sort();
+    const s = $('#grp'); s.replaceChildren(new Option('All groupings', 'All'), ...g.map((x) => new Option(x, x)));
+    s.value = g.includes(st.grp) ? st.grp : 'All';
+  }
+  function drawKpis() { const k = kpisOf(baseView()); document.querySelectorAll('#kpis [data-k]').forEach((e) => { e.textContent = L.length ? F(k[e.dataset.k]) : '—'; }); }
+  function drawAge() {
+    const rows = baseView('age'); const tot = rows.length || 1;
+    const data = AG.map((a) => { const r = rows.filter((l) => l.ab === a.k); return { ...a, n: r.length, locs: new Set(r.map((l) => l.wh + '|' + l.loc)).size }; });
+    const max = d3.max(data, (d) => d.n) || 1; const P = d3.format('.1%');
+    const head = el('div', 'exhead'); head.append(el('span', '', 'Pending for'), el('span', '', ''), el('span', '', 'Jobs'), el('span', '', 'Share'), el('span', '', 'Locations'));
+    $('#ageChart').replaceChildren(head, ...data.map((d) => {
+      const b = el('button', 'exrow'); b.type = 'button'; b.dataset.age = d.k; b.setAttribute('aria-pressed', String(st.age === d.k));
+      const l = el('span', 'exl'); const dot = el('i'); dot.style.background = d.c; l.append(dot, d.l);
+      const tr = el('span', 'extrack'); const f = el('i'); f.style.width = (100 * d.n / max) + '%'; f.style.background = d.c; if (!d.n) f.style.minWidth = '0'; tr.append(f);
+      b.append(l, tr, el('span', 'exq', F(d.n)), el('span', 'exp', d.n ? P(d.n / tot) : '–'), el('span', 'exs', F(d.locs)));
+      return b;
+    }));
+  }
+  const tipFor = (box) => { const t = el('div', 'tip'); t.hidden = true; box.append(t); return t; };
+  const showTip = (box, t, e, head, body) => {
+    t.replaceChildren(el('span', '', head), el('b', '', body)); t.hidden = false;
+    const r = box.getBoundingClientRect(); let x = e.clientX - r.left + 12; const tw = t.offsetWidth;
+    if (x + tw > r.width) x = Math.max(0, e.clientX - r.left - tw - 12);
+    t.style.left = x + 'px'; t.style.top = Math.max(0, e.clientY - r.top - 10) + 'px';
+  };
+  function drawArea() {
+    const box = $('#areaChart'); box.replaceChildren();
+    const rows = d3.rollups(baseView('area'), (v) => v.length, (l) => l.area).sort((a, b) => b[1] - a[1]).slice(0, 20);
+    if (!rows.length) { box.append(el('div', 'msg', 'No jobs for these filters.')); return; }
+    const W = Math.max(280, box.clientWidth), rowH = 26, H = rows.length * rowH + 6;
+    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H).attr('role', 'img').attr('aria-label', 'Pending jobs by area');
+    const L0 = 110, R = 50;
+    const x = d3.scaleLinear([0, d3.max(rows, (r) => r[1])], [0, Math.max(10, W - L0 - R)]);
+    const t = tipFor(box);
+    const g = svg.selectAll('g.r').data(rows).join('g').attr('class', 'r').attr('transform', (d, i) => `translate(0,${i * rowH + 3})`)
+      .on('click', (e, d) => { st.area = st.area === d[0] ? null : d[0]; st.shown = 200; render(); });
+    g.append('text').attr('x', L0 - 10).attr('y', rowH / 2 - 1).attr('dy', '.35em').attr('text-anchor', 'end').attr('font-size', 12).style('fill', (d) => (d[0] === st.area ? 'var(--y)' : 'var(--muted)')).text((d) => d[0]);
+    g.append('rect').attr('x', L0).attr('y', 5).attr('height', rowH - 11).attr('rx', 4).attr('width', (d) => Math.max(2, x(d[1])))
+      .style('fill', (d, i) => (d[0] === st.area || (!st.area && i === 0) ? 'var(--y)' : 'var(--b)')).style('fill-opacity', (d, i) => (d[0] === st.area || (!st.area && i === 0) ? 1 : 0.7))
+      .on('mousemove', (e, d) => showTip(box, t, e, d[0], F(d[1]) + ' jobs')).on('mouseleave', () => { t.hidden = true; });
+    g.append('text').attr('x', (d) => L0 + Math.max(2, x(d[1])) + 6).attr('y', rowH / 2 - 1).attr('dy', '.35em').attr('font-size', 12).attr('font-weight', 700).style('fill', 'var(--fg)').text((d) => F(d[1]));
+  }
+  function drawDays() {
+    const box = $('#dayChart'); box.replaceChildren();
+    const days = []; for (let i = 29; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); days.push(iso(d)); }
+    const cnt = d3.rollup(baseView(), (v) => v.length, (l) => l.day);
+    const data = days.map((d) => [d, cnt.get(d) || 0]);
+    const older = baseView().filter((l) => l.day < days[0]).length;
+    const W = Math.max(300, box.clientWidth), H = 190, m = { t: 18, r: 8, b: 26, l: 8 };
+    const x = d3.scaleBand(days, [m.l, W - m.r]).padding(0.18);
+    const y = d3.scaleLinear([0, d3.max(data, (d) => d[1]) || 1], [H - m.b, m.t]);
+    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H).attr('role', 'img').attr('aria-label', 'Pending jobs by creation day');
+    const t = tipFor(box);
+    svg.selectAll('rect').data(data).join('rect').attr('x', (d) => x(d[0])).attr('width', x.bandwidth()).attr('y', (d) => y(d[1])).attr('height', (d) => y(0) - y(d[1])).attr('rx', 3)
+      .style('fill', (d) => (d[0] === days[29] ? 'var(--g)' : 'var(--b)'))
+      .on('mousemove', (e, d) => showTip(box, t, e, d[0], F(d[1]) + ' jobs')).on('mouseleave', () => { t.hidden = true; });
+    svg.selectAll('text.v').data(data.filter((d) => d[1])).join('text').attr('class', 'v').attr('x', (d) => x(d[0]) + x.bandwidth() / 2).attr('y', (d) => y(d[1]) - 4).attr('text-anchor', 'middle').attr('font-size', 10).style('fill', 'var(--muted)').text((d) => (x.bandwidth() > 16 ? d[1] : ''));
+    const step = Math.ceil(30 / Math.max(1, Math.floor(W / 60)));
+    svg.selectAll('text.d').data(days.filter((d, i) => (29 - i) % step === 0)).join('text').attr('class', 'd').attr('x', (d) => x(d) + x.bandwidth() / 2).attr('y', H - 8).attr('text-anchor', 'middle').attr('font-size', 10.5).style('fill', 'var(--muted)').text((d) => d.slice(5));
+    if (older) box.append(el('p', 'note', F(older) + ' more pending jobs were created before ' + days[0] + '.'));
+  }
+  function drawTable() {
+    $('#tbl').classList.toggle('single', st.wh !== 'All');
+    document.querySelectorAll('#tbl th').forEach((th) => { const k = th.querySelector('button').dataset.sort; if (k === st.sortKey) th.setAttribute('aria-sort', st.sortDir > 0 ? 'ascending' : 'descending'); else th.removeAttribute('aria-sort'); });
+    const rows = jobView(); const lim = st.shown;
+    const frag = document.createDocumentFragment();
+    rows.slice(0, lim).forEach((l) => {
+      const tr = el('tr', l.age > 30 ? 'age-r' : l.age > 7 ? 'age-o' : '');
+      const td = (c, v) => tr.append(el('td', c, v));
+      td('c-wh colwh', l.wh); td('c-sku', l.job); td('c-loc', l.loc); td('c-fam hide-sm', l.area); td('c-fam hide-sm', l.grp);
+      td('num hide-sm', F(l.prio)); td('c-date', l.created.slice(0, 16)); td('num age', F(l.age));
+      frag.append(tr);
+    });
+    $('#tbody').replaceChildren(frag);
+    $('#count').textContent = rows.length ? `Showing ${F(Math.min(lim, rows.length))} of ${F(rows.length)} jobs` : (L.length ? 'No jobs match these filters.' : 'No data loaded yet.');
+    $('#more').hidden = rows.length <= lim;
+  }
+
+  // ---------- exports ----------
+  const stamp = () => iso(new Date()) + '_' + new Date().toTimeString().slice(0, 5).replace(':', '');
+  const jobsOut = () => jobView().map((l) => ({ Warehouse: l.wh, Job: l.job, Location: l.loc, Area: l.area, Grouping: l.grp, Priority: l.prio, Created: l.created, 'Age (days)': l.age, 'Pending for': AGL[l.ab] }));
+  function toCSV(rows) {
+    if (!rows.length) return '';
+    const cols = Object.keys(rows[0]);
+    const esc = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    return '\uFEFF' + [cols.join(','), ...rows.map((r) => cols.map((c) => esc(r[c])).join(','))].join('\n');
+  }
+  function download(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); }
+  const scope = () => (st.wh === 'All' ? 'All' : st.wh);
+  function exportXLSX() {
+    if (!window.XLSX) { alert('Excel export could not load. Check your connection and try again.'); return; }
+    const wb = XLSX.utils.book_new();
+    const add = (name, rows) => { const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ Note: 'No rows' }]); const cols = Object.keys(rows[0] || { Note: '' }); ws['!cols'] = cols.map((c) => ({ wch: Math.min(40, Math.max(c.length + 2, ...rows.slice(0, 300).map((r) => String(r[c] ?? '').length + 1))) })); XLSX.utils.book_append_sheet(wb, ws, name); };
+    add('Warehouses', WAREHOUSES.filter((w) => S.data[w]).map((w) => { const k = kpisOf(L.filter((l) => l.wh === w)); return { Warehouse: w, 'Pending jobs': k.jobs, Locations: k.locs, 'Created today': k.today, 'Over 7 days': k.d7, 'Over 30 days': k.d30, 'Oldest (days)': k.oldest, 'Loaded at': new Date(S.data[w].at).toLocaleString() }; }));
+    const base = baseView('age');
+    add('Aging', AG.map((a) => ({ 'Pending for': a.l, Jobs: base.filter((l) => l.ab === a.k).length })));
+    add('Areas', d3.rollups(baseView('area'), (v) => v.length, (l) => l.area).sort((a, b) => b[1] - a[1]).map(([a, n]) => ({ Area: a, Jobs: n })));
+    add('Jobs', jobsOut());
+    XLSX.writeFile(wb, `StockTake_pending_${scope()}_${stamp()}.xlsx`);
+  }
+  const menu = $('#exportMenu'), mBtn = $('#exportBtn');
+  const closeMenu = () => { menu.hidden = true; mBtn.setAttribute('aria-expanded', 'false'); };
+  mBtn.addEventListener('click', (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; mBtn.setAttribute('aria-expanded', String(!menu.hidden)); });
+  document.addEventListener('click', (e) => { if (!menu.contains(e.target)) closeMenu(); });
+  menu.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-ex]'); if (!b) return; closeMenu();
+    if (!L.length) { alert('Load at least one warehouse CSV first.'); return; }
+    if (b.dataset.ex === 'xlsx') exportXLSX(); else download(new Blob([toCSV(jobsOut())], { type: 'text/csv;charset=utf-8' }), `StockTake_pending_${scope()}_${stamp()}.csv`);
+  });
+
+  // ---------- controls ----------
+  let target = null;
+  $('#slots').addEventListener('click', (e) => { const b = e.target.closest('button[data-load]'); if (b) { target = b.dataset.load; $('#file').value = ''; $('#file').click(); } });
+  $('#file').addEventListener('change', (e) => { const f = e.target.files[0]; if (f && target) readFile(f, target); });
+  const dragOn = (zone, getWh) => {
+    zone.addEventListener('dragover', (e) => { e.preventDefault(); (getWh(e) || zone).classList.add('drag'); });
+    zone.addEventListener('dragleave', (e) => { (getWh(e) || zone).classList.remove('drag'); });
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault(); const s = getWh(e); (s || zone).classList.remove('drag');
+      const files = [...e.dataTransfer.files];
+      if (s) { if (files[0]) readFile(files[0], s.dataset.wh); } else files.forEach((f) => readFile(f, null));
+    });
+  };
+  dragOn($('#slots'), (e) => e.target.closest('.slot'));
+  dragOn($('#drop'), () => null);
+  $('#from').value = S.from;
+  $('#from').addEventListener('change', (e) => { if (e.target.value) { S.from = e.target.value; save(); render(); } });
+  $('#clearAll').addEventListener('click', () => { if (confirm('Remove all loaded warehouse data from this browser?')) { S.data = {}; save(); build(); render(); } });
+  const pickWh = (w) => { st.wh = w; st.shown = 200; render(); };
+  $('#chips').addEventListener('click', (e) => { const b = e.target.closest('button[data-wh]'); if (b) pickWh(b.dataset.wh); });
+  $('#cards').addEventListener('click', (e) => { const b = e.target.closest('button[data-wh]'); if (b) pickWh(st.wh === b.dataset.wh ? 'All' : b.dataset.wh); });
+  let qt; $('#q').addEventListener('input', (e) => { clearTimeout(qt); qt = setTimeout(() => { st.q = e.target.value; st.shown = 200; render(); }, 200); });
+  $('#ageChart').addEventListener('click', (e) => { const b = e.target.closest('button[data-age]'); if (b) { st.age = st.age === b.dataset.age ? null : b.dataset.age; st.shown = 200; render(); } });
+  $('#tagAge').addEventListener('click', () => { st.age = null; render(); });
+  $('#tagArea').addEventListener('click', () => { st.area = null; render(); });
+  $('#reset').addEventListener('click', () => { Object.assign(st, { wh: 'All', grp: 'All', q: '', age: null, area: null, sortKey: 'age', sortDir: -1, shown: 200 }); $('#q').value = ''; render(); });
+  $('#more').addEventListener('click', () => { st.shown += 200; drawTable(); });
+  $('#tbl thead').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-sort]'); if (!b) return; const k = b.dataset.sort;
+    if (k === st.sortKey) st.sortDir = -st.sortDir; else { st.sortKey = k; st.sortDir = ['age', 'prio'].includes(k) ? -1 : 1; }
+    st.shown = 200; drawTable();
+  });
+  const setHdr = () => document.documentElement.style.setProperty('--hdr', $('#hdr').offsetHeight + 'px');
+  setHdr();
+  let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { setHdr(); drawArea(); drawDays(); }, 150); });
+  // refresh ages and "today" links every 10 minutes
+  setInterval(() => { if (!document.hidden) { build(); render(); } }, 600000);
+
+  build(); render();
+})();
+</script>
+</body>
+</html>
