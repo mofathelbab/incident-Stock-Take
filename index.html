@@ -192,7 +192,7 @@ details.setup ol{margin:10px 0 4px;padding-left:20px;display:grid;gap:6px}
     </div>
   </div>
   <nav class="nav" aria-label="Sections">
-    <a href="#warehouses">Overview</a><a href="#aging">Aging</a><a href="#areas">Areas</a><a href="#daily">By day</a><a href="#incsec">Incidents</a><a href="#jobsec">Jobs</a>
+    <a href="#warehouses">Overview</a><a href="#aging">Aging</a><a href="#areas">Areas</a><a href="#daily">By day</a><a href="#jobsec">Jobs</a>
   </nav>
 </header>
 
@@ -220,11 +220,6 @@ details.setup ol{margin:10px 0 4px;padding-left:20px;display:grid;gap:6px}
       <button class="chip" type="button" data-dr="7">7 days</button>
       <button class="chip" type="button" data-dr="30">30 days</button>
     </div>
-    <select class="in" id="src" aria-label="Source">
-      <option value="all">Stock take + missing</option>
-      <option value="st">Stock take jobs only</option>
-      <option value="inc">Missing, no job yet</option>
-    </select>
     <input class="in search" id="q" type="search" placeholder="Search job, location or area" aria-label="Search job, location or area">
     <button class="tag" id="tagAge" type="button" hidden></button>
     <button class="tag" id="tagArea" type="button" hidden></button>
@@ -237,7 +232,7 @@ details.setup ol{margin:10px 0 4px;padding-left:20px;display:grid;gap:6px}
   </div>
 
   <section class="kpis" id="kpis">
-    <div class="kpi" style="--k:var(--y)"><span class="lbl">To count (jobs + missing)</span><span class="big" data-k="jobs">—</span></div>
+    <div class="kpi" style="--k:var(--y)"><span class="lbl">Pending jobs</span><span class="big" data-k="jobs">—</span></div>
     <div class="kpi" style="--k:var(--b)"><span class="lbl">Unique locations</span><span class="big" data-k="locs">—</span></div>
     <div class="kpi" style="--k:var(--g)"><span class="lbl">Created today</span><span class="big" data-k="today">—</span></div>
     <div class="kpi" style="--k:var(--o)"><span class="lbl">Older than 7 days</span><span class="big" data-k="d7">—</span></div>
@@ -270,37 +265,6 @@ details.setup ol{margin:10px 0 4px;padding-left:20px;display:grid;gap:6px}
     <div class="chart" id="dayChart"></div>
   </section>
 
-  <section class="panel" id="incsec">
-    <div class="ph">
-      <div class="ico" style="--ic:rgba(248,113,113,.14);--icc:var(--r)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg></div>
-      <div><h2 class="h">Missing locations vs stock take</h2></div>
-    </div>
-    <div class="inc-top">
-      <button class="btn yb" id="incLoad" type="button">Load incidents CSV</button>
-      <input type="file" id="incFile" accept=".csv,text/csv" multiple hidden>
-      <span class="st" id="incInfo">No incidents file loaded</span>
-      <div class="exbar">
-        <select class="in" id="incView" aria-label="Show">
-          <option value="no">Missing, no stock-take job</option>
-          <option value="yes">Missing, has stock-take job</option>
-          <option value="all">All missing locations</option>
-        </select>
-        <button class="btn ob" id="incCsv" type="button">CSV</button>
-        <button class="btn" id="incClear" type="button">Clear</button>
-      </div>
-    </div>
-    <div class="inc-kpis" id="incKpis"></div>
-    <div class="tablewrap" style="max-height:520px">
-      <table id="incTbl">
-        <thead><tr>
-          <th class="plain colwh">Warehouse</th><th class="plain">Location</th><th class="plain">Zone</th><th class="plain">Date</th><th class="plain">Pending stock-take job</th>
-        </tr></thead>
-        <tbody id="incBody"></tbody>
-      </table>
-    </div>
-    <div class="foot"><span id="incCount"></span><button class="btn" id="incMore" type="button" hidden>Show 200 more</button></div>
-  </section>
-
   <section class="panel" id="jobsec">
     <div class="ph">
       <div class="ico" style="--ic:rgba(167,139,250,.16);--icc:var(--p)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M4 10h16M10 10v10"/></svg></div>
@@ -316,7 +280,6 @@ details.setup ol{margin:10px 0 4px;padding-left:20px;display:grid;gap:6px}
           <th class="num hide-sm"><button type="button" data-sort="prio">Priority</button></th>
           <th><button type="button" data-sort="created">Created</button></th>
           <th class="num"><button type="button" data-sort="age">Age (days)</button></th>
-          <th class="hide-sm"><button type="button" data-sort="inc">Missing (Central Minutes)</button></th>
         </tr></thead>
         <tbody id="tbody"></tbody>
       </table>
@@ -367,7 +330,6 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
   const H = { apikey: SB_READ_KEY, Authorization: 'Bearer ' + SB_READ_KEY };
   const API = SB_URL + '/rest/v1/stocktake_snapshots?id=eq.1&select=';
   let RAW = null, L = [], lastAt = null, updatedLabel = '';
-  let INC = new Map(); let incMeta = null; let incShown = 200;
   
   // ---------- data ----------
   const areaOf = (loc) => { const p = String(loc || '').split('-'); return p.length > 1 ? p[0] + '-' + p[1] : loc || '(none)'; };
@@ -387,32 +349,7 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
       const loc = g(a, 'job_location_code');
       L.push({ wh, job: g(a, 'jobNr'), loc, area: areaOf(loc), prio: +g(a, 'job_priority') || 0, created, day: created.slice(0, 10), isToday: created.slice(0, 10) === today, age, ab: ageBucket(age), code, inc: 0, src: 'st' });
     }
-    // add missing locations (Central Minutes) that have no pending stock-take job, once per location + date
-    if (INC.size) {
-      const stLoc = new Set(L.map((l) => locKey(l.wh, l.loc)));
-      for (const o of INC.values()) {
-        if (stLoc.has(o.lk || o.key)) continue;
-        const ms = Date.parse(o.day + 'T00:00:00');
-        const age = isNaN(ms) ? 0 : Math.max(0, Math.floor((t - ms) / 864e5));
-        L.push({ wh: o.wh, job: 'No job yet', loc: o.loc, area: areaOf(o.loc), prio: 0, created: o.day, day: o.day, isToday: o.day === today, age, ab: ageBucket(age), code: '', inc: 1, src: 'inc' });
-      }
-    }
   }
-  let incLiveAt = null;
-  async function loadIncLive() {
-    try {
-      const API2 = SB_URL + '/rest/v1/stocktake_snapshots?id=eq.2&select=';
-      const r = await fetch(API2 + 'updated_at', { headers: H, cache: 'no-store' }); if (!r.ok) return;
-      const j = await r.json(); if (!j[0] || j[0].updated_at === incLiveAt) return;
-      const r2 = await fetch(API2 + 'updated_at,cols,rows', { headers: H, cache: 'no-store' }); if (!r2.ok) return;
-      const d = (await r2.json())[0]; if (!d) return;
-      const objs = d.rows.map((a) => Object.fromEntries(d.cols.map((c, i) => [c, a[i]])));
-      const res = aggInc(objs);
-      INC = res.map; incLiveAt = d.updated_at;
-      incMeta = { live: true, at: Date.parse(d.updated_at), total: res.total, kept: res.kept, from: res.days[0] || '', to: res.days[res.days.length - 1] || '' };
-    } catch (e) {}
-  }
-  function markInc() { if (!INC.size) return; const s2 = new Set([...INC.values()].map((o) => o.lk || o.key)); for (const l of L) if (l.src === 'st') l.inc = s2.has(locKey(l.wh, l.loc)) ? 1 : 0; }
   function setLive(state, txt) { const l = $('#live'); l.classList.toggle('err', state === 'err'); l.classList.toggle('busy', state === 'busy'); $('#liveTxt').textContent = txt; }
   const when = (t) => new Date(t).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   async function load(force) {
@@ -420,7 +357,7 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
     try {
       if (RAW && !force) {
         const r = await fetch(API + 'updated_at', { headers: H, cache: 'no-store' });
-        if (r.ok) { const j = await r.json(); if (j[0] && j[0].updated_at === lastAt) { await loadIncLive(); setLive('ok', 'LIVE'); build(); markInc(); render(); return; } }
+        if (r.ok) { const j = await r.json(); if (j[0] && j[0].updated_at === lastAt) { setLive('ok', 'LIVE'); build(); render(); return; } }
       }
       const res = await fetch(API + 'updated_at,row_count,cols,rows', { headers: H, cache: 'no-store' });
       if (!res.ok) throw new Error('Supabase answered ' + res.status + (res.status === 404 ? ' (run the setup SQL first)' : ''));
@@ -428,7 +365,7 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
       if (!j[0]) { RAW = null; setLive('err', 'No data yet'); render('No data yet. Click the Refresh Stock Take bookmark on grocery-tools.noon.team.'); return; }
       RAW = j[0]; lastAt = RAW.updated_at; updatedLabel = when(lastAt);
       $('#loadedAt').textContent = updatedLabel;
-      await loadIncLive(); build(); markInc(); setLive('ok', 'LIVE'); render();
+      build(); setLive('ok', 'LIVE'); render();
     } catch (e) { setLive('err', 'Load failed'); if (!RAW) render('Could not load the data. ' + e.message); }
   }
 
@@ -453,14 +390,13 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
   function render(emptyMsg) {
     $('#selName').textContent = scopeName();
     const ex = [];
-    if (st.src !== 'all') ex.push(st.src === 'st' ? 'stock take only' : 'missing, no job only');
     if (st.from || st.to) ex.push('created ' + (st.from || 'start') + ' → ' + (st.to || 'today'));
     if (st.age) ex.push('age ' + AGL[st.age]); if (st.area) ex.push('area ' + st.area); if (st.q.trim()) ex.push('search "' + st.q.trim() + '"');
     $('#flt').textContent = ex.length ? ' · ' + ex.join(' · ') : '';
     $('#exScope').textContent = 'Export: ' + (st.whs.size ? selList().join(', ') : 'all warehouses') + (ex.length ? ' (filtered)' : '');
     $('#tagAge').hidden = !st.age; $('#tagAge').textContent = st.age ? 'Age: ' + AGL[st.age] + ' ×' : '';
     $('#tagArea').hidden = !st.area; $('#tagArea').textContent = st.area ? 'Area: ' + st.area + ' ×' : '';
-    drawCards(emptyMsg); drawChips(); drawKpis(); drawAge(); drawArea(); drawDays(); drawInc(); drawTable(emptyMsg);
+    drawCards(emptyMsg); drawChips(); drawKpis(); drawAge(); drawArea(); drawDays(); drawTable(emptyMsg);
   }
   function drawCards(emptyMsg) {
     if (!RAW) { $('#cards').replaceChildren(el('div', 'msg' + (emptyMsg && /Could not/.test(emptyMsg) ? ' err' : ''), emptyMsg || 'Loading…')); return; }
@@ -474,7 +410,7 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
       const mini = el('div', 'mini');
       const part = (v, label, bad) => { const sp = el('span', bad ? 'bad' : ''); sp.append(el('b', '', F(v)), ' ' + label); return sp; };
       mini.append(part(k.today, 'today'), part(k.d7, 'over 7d', k.d7 > 0), part(k.oldest, 'days oldest', k.oldest > 30));
-      b.append(top, el('div', 'big', F(k.jobs)), el('div', 'lbl', 'Locations to count'), bar, mini);
+      b.append(top, el('div', 'big', F(k.jobs)), el('div', 'lbl', 'Pending jobs'), bar, mini);
       return b;
     }));
   }
@@ -540,88 +476,6 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
     const step = Math.ceil(30 / Math.max(1, Math.floor(W / 60)));
     svg.selectAll('text.d').data(days.filter((d, i) => (29 - i) % step === 0)).join('text').attr('class', 'd').attr('x', (d) => x(d) + x.bandwidth() / 2).attr('y', Hh - 8).attr('text-anchor', 'middle').attr('font-size', 10.5).style('fill', 'var(--muted)').text((d) => d.slice(5));
   }
-  // ---------- missing incidents (picking "Incident Reported" export), linked by warehouse + location ----------
-  const INC_KEY = 'caiid_missing_incidents_v2';
-  const locKey = (w, l) => w + '|' + String(l || '').trim().toUpperCase();
-  try { const raw = localStorage.getItem(INC_KEY); if (raw) { const o = JSON.parse(raw); INC = new Map(o.rows.map((r) => [r.key, r])); incMeta = o.meta; } } catch (e) {}
-  function saveInc() { try { localStorage.setItem(INC_KEY, JSON.stringify({ meta: incMeta, rows: [...INC.values()] })); } catch (e) {} }
-  function parseIncidents(text) {
-    const rows = d3.csvParse(text.replace(/^\uFEFF/, ''));
-    const need = ['warehouse', 'location_code', 'skip_reason'];
-    if (!need.every((c) => rows.columns.includes(c))) throw new Error('This is not the Incident Reported export (needs warehouse, location_code and skip_reason columns).');
-    return aggInc(rows);
-  }
-  function aggInc(rows) {
-    let total = 0, kept = 0; const map = new Map(); const days = new Set();
-    for (const r of rows) {
-      total++;
-      if (String(r.skip_reason || '').trim().toLowerCase() !== 'missing') continue;
-      const wh = String(r.warehouse || r['\uFEFFwarehouse'] || r.warehouse_code || '').trim(); if (!WAREHOUSES.includes(wh)) continue;
-      kept++;
-      const at = String(r.reported_at || r.date || '').replace('T', ' ');
-      const day = String(r.date || at).slice(0, 10);
-      const lk = locKey(wh, r.location_code); const k = lk + '|' + day;
-      days.add(day);
-      let o = map.get(k);
-      if (!o) { o = { key: k, lk, day, wh, loc: String(r.location_code).trim(), zone: r.zone_code || '', skus: [], n: 0, last: '', user: '' }; map.set(k, o); }
-      o.n += +r.skipped_count > 0 ? +r.skipped_count : 1;
-      if (r.sku && !o.skus.includes(r.sku)) o.skus.push(r.sku);
-      if (at > o.last) { o.last = at; o.user = String(r.username || '').split('@')[0]; }
-    }
-    return { map, total, kept, days: [...days].filter(Boolean).sort() };
-  }
-  async function loadIncFiles(files) {
-    try {
-      const merged = new Map(); let total = 0, kept = 0; const days = new Set();
-      for (const f of files) {
-        const r = parseIncidents(await f.text()); total += r.total; kept += r.kept; r.days.forEach((d) => days.add(d));
-        for (const [k, o] of r.map) { const m = merged.get(k); if (!m) merged.set(k, o); else { m.n += o.n; o.skus.forEach((s) => { if (!m.skus.includes(s)) m.skus.push(s); }); if (o.last > m.last) { m.last = o.last; m.user = o.user; } } }
-      }
-      INC = merged; const ds = [...days].sort();
-      incMeta = { at: Date.now(), files: files.map((f) => f.name), total, kept, from: ds[0] || '', to: ds[ds.length - 1] || '' };
-      saveInc(); incShown = 200; build(); markInc(); render();
-    } catch (e) { alert(e.message); }
-  }
-  function incRows() {
-    const pend = new Map();
-    for (const l of L) { if (l.src !== 'st') continue; const k = locKey(l.wh, l.loc); pend.set(k, (pend.get(k) || 0) + 1); }
-    return [...INC.values()].filter((o) => inWh(o.wh) && (!st.from || o.day >= st.from) && (!st.to || o.day <= st.to)).map((o) => ({ ...o, jobs: pend.get(o.lk || o.key) || 0 }));
-  }
-  function drawInc() {
-    const has = INC.size > 0;
-    $('#incInfo').textContent = has ? `${F(INC.size)} missing locations (unique per location + date) · ${incMeta.from === incMeta.to ? incMeta.from : incMeta.from + ' → ' + incMeta.to} · ${incMeta.live ? 'live, updated' : 'file loaded'} ${when(incMeta.at)}` : 'No incidents file loaded. Export it from Picking > Incident Reported and load it here.';
-    ['incView', 'incCsv', 'incClear'].forEach((id) => { $('#' + id).disabled = !has; });
-    const all = incRows();
-    const yes = all.filter((o) => o.jobs > 0), no = all.filter((o) => !o.jobs);
-    const kp = (c, lbl, v) => { const k = el('div', 'kpi'); k.style.setProperty('--k', c); k.append(el('span', 'lbl', lbl), el('span', 'big', has ? F(v) : '—')); return k; };
-    const stLocs = new Set(L.filter((l) => l.src === 'st' && inWh(l.wh)).map((l) => locKey(l.wh, l.loc)));
-    $('#incKpis').replaceChildren(kp('var(--b)', 'Pending stock-take locations', stLocs.size), kp('var(--o)', 'Missing locations (Central Minutes)', all.length), kp('var(--g)', 'Missing, already pending', yes.length), kp('var(--r)', 'Missing, no stock-take job', no.length), kp('var(--y)', 'Total locations to count', stLocs.size + no.length));
-    const v = $('#incView').value;
-    const rows = (v === 'no' ? no : v === 'yes' ? yes : all).sort((a, b) => a.wh.localeCompare(b.wh) || String(b.day).localeCompare(String(a.day)) || a.loc.localeCompare(b.loc));
-    const frag = document.createDocumentFragment();
-    rows.slice(0, incShown).forEach((o) => {
-      const tr = el('tr'); const td = (c, x) => tr.append(el('td', c, x));
-      td('c-wh colwh', o.wh); td('c-loc', o.loc); td('c-fam', o.zone || '—'); td('c-date', o.day || '—');
-      const c = el('td'); c.append(el('span', o.jobs ? 'badge-ok' : 'badge-no', o.jobs ? 'Yes' : 'No')); tr.append(c);
-      frag.append(tr);
-    });
-    $('#incBody').replaceChildren(frag);
-    $('#incTbl').classList.toggle('single', st.whs.size === 1);
-    $('#incCount').textContent = has ? (rows.length ? `Showing ${F(Math.min(incShown, rows.length))} of ${F(rows.length)} locations` : 'No locations in this view.') : '';
-    $('#incMore').hidden = rows.length <= incShown;
-  }
-  const incOut = () => { const v = $('#incView').value; return incRows().filter((o) => (v === 'all' ? true : v === 'yes' ? o.jobs > 0 : !o.jobs)).map((o) => ({ Warehouse: o.wh, Location: o.loc, Zone: o.zone, Date: o.day, 'Pending stock-take job': o.jobs ? 'Yes' : 'No' })); };
-  $('#incLoad').addEventListener('click', () => { $('#incFile').value = ''; $('#incFile').click(); });
-  $('#incFile').addEventListener('change', (e) => { const f = [...e.target.files]; if (f.length) loadIncFiles(f); });
-  const incSec = $('#incsec');
-  incSec.addEventListener('dragover', (e) => { e.preventDefault(); incSec.classList.add('drop-on'); });
-  incSec.addEventListener('dragleave', () => incSec.classList.remove('drop-on'));
-  incSec.addEventListener('drop', (e) => { e.preventDefault(); incSec.classList.remove('drop-on'); const f = [...e.dataTransfer.files]; if (f.length) loadIncFiles(f); });
-  $('#incView').addEventListener('change', () => { incShown = 200; drawInc(); });
-  $('#incMore').addEventListener('click', () => { incShown += 200; drawInc(); });
-  $('#incClear').addEventListener('click', () => { if (confirm('Remove the loaded incidents from this browser?')) { INC = new Map(); incMeta = null; try { localStorage.removeItem(INC_KEY); } catch (e) {} build(); render(); } });
-  $('#incCsv').addEventListener('click', () => { const r = incOut(); if (!r.length) { alert('No locations in this view.'); return; } download(new Blob([toCSV(r)], { type: 'text/csv;charset=utf-8' }), `Missing_incidents_${$('#incView').value}_${scopeFile()}_${stamp()}.csv`); });
-
   function drawTable(emptyMsg) {
     $('#tbl').classList.toggle('single', st.whs.size === 1);
     document.querySelectorAll('#tbl th').forEach((th) => { const k = th.querySelector('button').dataset.sort; if (k === st.sortKey) th.setAttribute('aria-sort', st.sortDir > 0 ? 'ascending' : 'descending'); else th.removeAttribute('aria-sort'); });
@@ -632,7 +486,6 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
       const td = (c, v) => tr.append(el('td', c, v));
       td('c-wh colwh', l.wh); td('c-sku', l.job); td('c-loc', l.loc); td('c-fam hide-sm', l.area);
       td('num hide-sm', F(l.prio)); td('c-date', l.created.slice(0, 16)); td('num age', F(l.age));
-      { const c = el('td', 'hide-sm'); if (l.src === 'inc') c.append(el('span', 'badge-no', 'Missing, no job')); else if (l.inc) c.append(el('span', 'badge-ok', 'Missing, has job')); tr.append(c); }
       frag.append(tr);
     });
     $('#tbody').replaceChildren(frag);
@@ -642,7 +495,7 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
 
   // ---------- exports: selected warehouses, or all when none is selected ----------
   const stamp = () => iso(new Date()) + '_' + new Date().toTimeString().slice(0, 5).replace(':', '');
-  const jobsOut = () => jobView().map((l) => ({ Warehouse: l.wh, Job: l.job, Location: l.loc, Area: l.area, 'Warehouse code': l.code, Priority: l.prio, Created: l.created, 'Age (days)': l.age, 'Pending for': AGL[l.ab], Source: l.src === 'inc' ? 'Missing, no job yet' : 'Stock take job', 'Missing (Central Minutes)': INC.size ? (l.inc ? 'Yes' : 'No') : '' }));
+  const jobsOut = () => jobView().map((l) => ({ Warehouse: l.wh, Job: l.job, Location: l.loc, Area: l.area, 'Warehouse code': l.code, Priority: l.prio, Created: l.created, 'Age (days)': l.age, 'Pending for': AGL[l.ab] }));
   function toCSV(rows) {
     if (!rows.length) return '';
     const cols = Object.keys(rows[0]);
@@ -669,7 +522,6 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
     const ab = baseView('age'); add('Aging', AG.map((a) => ({ 'Pending for': a.l, Jobs: ab.filter((l) => l.ab === a.k).length })));
     add('Areas', d3.rollups(baseView('area'), (v) => v.length, (l) => l.area).sort((a, b) => b[1] - a[1]).map(([a, n]) => ({ Area: a, Jobs: n })));
     add('Jobs', jobsOut());
-    if (INC.size) add('Missing locations', incRows().map((o) => ({ Warehouse: o.wh, Location: o.loc, Zone: o.zone, Date: o.day, 'Pending stock-take job': o.jobs ? 'Yes' : 'No' })));
     XLSX.writeFile(wb, `StockTake_pending_${scopeFile()}_${stamp()}.xlsx`);
   }
   $('#exCsv').addEventListener('click', exportCSV);
@@ -679,12 +531,11 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
   const toggleWh = (w) => { if (w === 'All') st.whs.clear(); else if (st.whs.has(w)) st.whs.delete(w); else st.whs.add(w); st.shown = 200; render(); };
   $('#chips').addEventListener('click', (e) => { const b = e.target.closest('button[data-wh]'); if (b) toggleWh(b.dataset.wh); });
   $('#cards').addEventListener('click', (e) => { const b = e.target.closest('button[data-wh]'); if (b) toggleWh(b.dataset.wh); });
-  $('#src').addEventListener('change', (e) => { st.src = e.target.value; st.shown = 200; render(); });
   let qt; $('#q').addEventListener('input', (e) => { clearTimeout(qt); qt = setTimeout(() => { st.q = e.target.value; st.shown = 200; render(); }, 200); });
   $('#ageChart').addEventListener('click', (e) => { const b = e.target.closest('button[data-age]'); if (b) { st.age = st.age === b.dataset.age ? null : b.dataset.age; st.shown = 200; render(); } });
   $('#tagAge').addEventListener('click', () => { st.age = null; render(); });
   $('#tagArea').addEventListener('click', () => { st.area = null; render(); });
-  $('#reset').addEventListener('click', () => { st.whs.clear(); Object.assign(st, { src: 'all', from: '', to: '', q: '', age: null, area: null, sortKey: 'age', sortDir: -1, shown: 200 }); $('#q').value = ''; $('#src').value = 'all'; $('#dFrom').value = ''; $('#dTo').value = ''; render(); });
+  $('#reset').addEventListener('click', () => { st.whs.clear(); Object.assign(st, { src: 'all', from: '', to: '', q: '', age: null, area: null, sortKey: 'age', sortDir: -1, shown: 200 }); $('#q').value = ''; $('#dFrom').value = ''; $('#dTo').value = ''; render(); });
   const rangeOf = (k) => {
     const t = new Date();
     if (k === 'y') { const y = new Date(); y.setDate(y.getDate() - 1); return [iso(y), iso(y)]; }
