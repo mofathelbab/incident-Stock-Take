@@ -170,6 +170,10 @@ tr.age-o td.age{color:var(--o);font-weight:700}
 .badge-ok{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:800;background:rgba(52,211,153,.15);color:var(--g)}
 .badge-no{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:800;background:rgba(248,113,113,.15);color:var(--r)}
 .drop-on{outline:2px dashed var(--y);outline-offset:4px}
+.badge-hold{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:800;background:rgba(248,113,113,.15);color:var(--r);white-space:nowrap}
+.badge-ready{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:800;background:rgba(52,211,153,.15);color:var(--g);white-space:nowrap}
+tr.hold td{background:rgba(248,113,113,.06)}
+.resline{display:flex;gap:6px;flex-wrap:wrap}
 .chip .n{font-weight:600;opacity:.75;margin-left:6px}
 details.setup{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px 16px;color:var(--muted);font-size:13px}
 details.setup summary{cursor:pointer;color:var(--fg);font-weight:700}
@@ -220,6 +224,11 @@ details.setup ol{margin:10px 0 4px;padding-left:20px;display:grid;gap:6px}
       <button class="chip" type="button" data-dr="7">7 days</button>
       <button class="chip" type="button" data-dr="30">30 days</button>
     </div>
+    <select class="in" id="resv" aria-label="Reservation">
+      <option value="all">All locations</option>
+      <option value="ready">Ready to count</option>
+      <option value="hold">Reserved, do not count</option>
+    </select>
     <input class="in search" id="q" type="search" placeholder="Search job, location or area" aria-label="Search job, location or area">
     <button class="tag" id="tagAge" type="button" hidden></button>
     <button class="tag" id="tagArea" type="button" hidden></button>
@@ -234,6 +243,8 @@ details.setup ol{margin:10px 0 4px;padding-left:20px;display:grid;gap:6px}
   <section class="kpis" id="kpis">
     <div class="kpi" style="--k:var(--y)"><span class="lbl">Pending jobs</span><span class="big" data-k="jobs">—</span></div>
     <div class="kpi" style="--k:var(--b)"><span class="lbl">Unique locations</span><span class="big" data-k="locs">—</span></div>
+    <div class="kpi" style="--k:var(--g)"><span class="lbl">Ready to count</span><span class="big" data-k="ready">—</span></div>
+    <div class="kpi" style="--k:var(--r)"><span class="lbl">Reserved, do not count</span><span class="big" data-k="hold">—</span></div>
     <div class="kpi" style="--k:var(--g)"><span class="lbl">Created today</span><span class="big" data-k="today">—</span></div>
     <div class="kpi" style="--k:var(--o)"><span class="lbl">Older than 7 days</span><span class="big" data-k="d7">—</span></div>
     <div class="kpi" style="--k:var(--r)"><span class="lbl">Older than 30 days</span><span class="big" data-k="d30">—</span></div>
@@ -280,6 +291,7 @@ details.setup ol{margin:10px 0 4px;padding-left:20px;display:grid;gap:6px}
           <th class="num hide-sm"><button type="button" data-sort="prio">Priority</button></th>
           <th><button type="button" data-sort="created">Created</button></th>
           <th class="num"><button type="button" data-sort="age">Age (days)</button></th>
+          <th><button type="button" data-sort="resQty">Reserved</button></th>
         </tr></thead>
         <tbody id="tbody"></tbody>
       </table>
@@ -326,13 +338,36 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
   ];
   const AGL = Object.fromEntries(AG.map((a) => [a.k, a.l]));
   const ageBucket = (d) => AG.find((a) => a.t(d)).k;
-  const st = { whs: new Set(), src: 'all', from: '', to: '', q: '', age: null, area: null, sortKey: 'age', sortDir: -1, shown: 200 };
+  const st = { resv: 'all', whs: new Set(), src: 'all', from: '', to: '', q: '', age: null, area: null, sortKey: 'age', sortDir: -1, shown: 200 };
   const H = { apikey: SB_READ_KEY, Authorization: 'Bearer ' + SB_READ_KEY };
   const API = SB_URL + '/rest/v1/stocktake_snapshots?id=eq.1&select=';
   let RAW = null, L = [], lastAt = null, updatedLabel = '';
   
   // ---------- data ----------
   const areaOf = (loc) => { const p = String(loc || '').split('-'); return p.length > 1 ? p[0] + '-' + p[1] : loc || '(none)'; };
+  // ---------- reserved locations: from the SOH dashboard data (qty_reserved per location) ----------
+  // reservations made by the stock-take job itself (reason incident_stocktake) do not block counting
+  const SELF_REASONS = ['incident_stocktake'];
+  const locKey = (w, l) => w + '|' + String(l || '').trim().toUpperCase();
+  let RES = new Map(), RESAT = null, RESSRC = '';
+  async function loadReserved() {
+    const get = async (table, id) => { const r = await fetch(SB_URL + '/rest/v1/' + table + '?id=eq.' + id + '&select=updated_at', { headers: H, cache: 'no-store' }); if (!r.ok) return null; const j = await r.json(); return j[0] ? j[0].updated_at : null; };
+    const full = async (table, id) => { const r = await fetch(SB_URL + '/rest/v1/' + table + '?id=eq.' + id + '&select=updated_at,cols,rows', { headers: H, cache: 'no-store' }); if (!r.ok) return null; const j = await r.json(); return j[0] || null; };
+    try {
+      const src = 'soh'; const at = await get('soh_snapshots', 1);
+      if (!at || (at === RESAT && src === RESSRC)) return;
+      const d = await full('soh_snapshots', 1); if (!d) return;
+      const ix = Object.fromEntries(d.cols.map((c, i) => [c, i])); const m = new Map();
+      for (const a of d.rows) {
+        const wh = a[ix.partner_warehouse_code], loc = a[ix.location_code]; if (!wh || !loc) continue;
+        const why = src === 'reservations' ? String(a[ix.reservation_reason] || '').trim() : '';
+        if (why && SELF_REASONS.includes(why)) continue;
+        const q = Number(String(a[ix.qty_reserved] ?? '').replace(/,/g, '')) || 0; if (q <= 0) continue;
+        const k = locKey(wh, loc); const o = m.get(k) || { qty: 0, why: new Set() }; o.qty += q; if (why) o.why.add(why); m.set(k, o);
+      }
+      RES = m; RESAT = at; RESSRC = src;
+    } catch (e) {}
+  }
   function build() {
     if (!RAW) { L = []; return; }
     const t = Date.now(), today = iso(new Date());
@@ -347,7 +382,7 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
       const ms = Date.parse(created.replace(' ', 'T'));
       const age = isNaN(ms) ? 0 : Math.max(0, Math.floor((t - ms) / 864e5));
       const loc = g(a, 'job_location_code');
-      L.push({ wh, job: g(a, 'jobNr'), loc, area: areaOf(loc), prio: +g(a, 'job_priority') || 0, created, day: created.slice(0, 10), isToday: created.slice(0, 10) === today, age, ab: ageBucket(age), code, inc: 0, src: 'st' });
+      L.push({ wh, job: g(a, 'jobNr'), loc, area: areaOf(loc), prio: +g(a, 'job_priority') || 0, created, day: created.slice(0, 10), isToday: created.slice(0, 10) === today, age, ab: ageBucket(age), code, inc: 0, src: 'st', ...(() => { const r = RES.get(locKey(wh, loc)); return { resQty: r ? r.qty : 0, resWhy: r ? [...r.why].join(', ') : '' }; })() });
     }
   }
   function setLive(state, txt) { const l = $('#live'); l.classList.toggle('err', state === 'err'); l.classList.toggle('busy', state === 'busy'); $('#liveTxt').textContent = txt; }
@@ -357,7 +392,7 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
     try {
       if (RAW && !force) {
         const r = await fetch(API + 'updated_at', { headers: H, cache: 'no-store' });
-        if (r.ok) { const j = await r.json(); if (j[0] && j[0].updated_at === lastAt) { setLive('ok', 'LIVE'); build(); render(); return; } }
+        if (r.ok) { const j = await r.json(); if (j[0] && j[0].updated_at === lastAt) { await loadReserved(); setLive('ok', 'LIVE'); build(); render(); return; } }
       }
       const res = await fetch(API + 'updated_at,row_count,cols,rows', { headers: H, cache: 'no-store' });
       if (!res.ok) throw new Error('Supabase answered ' + res.status + (res.status === 404 ? ' (run the setup SQL first)' : ''));
@@ -365,7 +400,7 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
       if (!j[0]) { RAW = null; setLive('err', 'No data yet'); render('No data yet. Click the Refresh Stock Take bookmark on grocery-tools.noon.team.'); return; }
       RAW = j[0]; lastAt = RAW.updated_at; updatedLabel = when(lastAt);
       $('#loadedAt').textContent = updatedLabel;
-      build(); setLive('ok', 'LIVE'); render();
+      await loadReserved(); build(); setLive('ok', 'LIVE'); render();
     } catch (e) { setLive('err', 'Load failed'); if (!RAW) render('Could not load the data. ' + e.message); }
   }
 
@@ -374,14 +409,14 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
   const matchQ = (q, ...v) => !q || v.some((x) => String(x || '').toLowerCase().includes(q));
   const baseView = (skip) => {
     const q = st.q.trim().toLowerCase();
-    return L.filter((l) => (st.src === 'all' || l.src === st.src) && (skip === 'wh' || inWh(l.wh)) && (!st.from || l.day >= st.from) && (!st.to || l.day <= st.to) && (skip === 'age' || !st.age || l.ab === st.age) && (skip === 'area' || !st.area || l.area === st.area) && matchQ(q, l.job, l.loc, l.area));
+    return L.filter((l) => (st.src === 'all' || l.src === st.src) && (st.resv === 'all' || (st.resv === 'hold') === (l.resQty > 0)) && (skip === 'wh' || inWh(l.wh)) && (!st.from || l.day >= st.from) && (!st.to || l.day <= st.to) && (skip === 'age' || !st.age || l.ab === st.age) && (skip === 'area' || !st.area || l.area === st.area) && matchQ(q, l.job, l.loc, l.area));
   };
   function jobView() {
     const rows = baseView();
     rows.sort((a, b) => { const va = a[st.sortKey], vb = b[st.sortKey]; const c = typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb)); return c * st.sortDir || b.age - a.age || a.loc.localeCompare(b.loc); });
     return rows;
   }
-  const kpisOf = (rows) => ({ jobs: rows.length, locs: new Set(rows.map((l) => l.wh + '|' + l.loc)).size, today: rows.filter((l) => l.isToday).length, d7: rows.filter((l) => l.age > 7).length, d30: rows.filter((l) => l.age > 30).length, oldest: rows.length ? d3.max(rows, (l) => l.age) : 0 });
+  const kpisOf = (rows) => ({ jobs: rows.length, locs: new Set(rows.map((l) => l.wh + '|' + l.loc)).size, hold: new Set(rows.filter((l) => l.resQty > 0).map((l) => l.wh + '|' + l.loc)).size, ready: new Set(rows.filter((l) => !(l.resQty > 0)).map((l) => l.wh + '|' + l.loc)).size, today: rows.filter((l) => l.isToday).length, d7: rows.filter((l) => l.age > 7).length, d30: rows.filter((l) => l.age > 30).length, oldest: rows.length ? d3.max(rows, (l) => l.age) : 0 });
   const selList = () => WAREHOUSES.filter((w) => st.whs.has(w));
   const scopeName = () => (st.whs.size ? selList().join(', ') : 'All warehouses');
   const scopeFile = () => (st.whs.size ? selList().join('+') : 'All');
@@ -390,6 +425,7 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
   function render(emptyMsg) {
     $('#selName').textContent = scopeName();
     const ex = [];
+    if (st.resv !== 'all') ex.push(st.resv === 'hold' ? 'reserved only' : 'ready to count only');
     if (st.from || st.to) ex.push('created ' + (st.from || 'start') + ' → ' + (st.to || 'today'));
     if (st.age) ex.push('age ' + AGL[st.age]); if (st.area) ex.push('area ' + st.area); if (st.q.trim()) ex.push('search "' + st.q.trim() + '"');
     $('#flt').textContent = ex.length ? ' · ' + ex.join(' · ') : '';
@@ -410,7 +446,8 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
       const mini = el('div', 'mini');
       const part = (v, label, bad) => { const sp = el('span', bad ? 'bad' : ''); sp.append(el('b', '', F(v)), ' ' + label); return sp; };
       mini.append(part(k.today, 'today'), part(k.d7, 'over 7d', k.d7 > 0), part(k.oldest, 'days oldest', k.oldest > 30));
-      b.append(top, el('div', 'big', F(k.jobs)), el('div', 'lbl', 'Pending jobs'), bar, mini);
+      const rl = el('div', 'resline'); if (RESAT) { const h = el('span', k.hold ? 'badge-hold' : 'badge-ready', k.hold ? F(k.hold) + ' reserved · do not count' : 'No reserved locations'); rl.append(h); if (k.hold) rl.append(el('span', 'badge-ready', F(k.ready) + ' ready')); }
+      b.append(top, el('div', 'big', F(k.jobs)), el('div', 'lbl', 'Pending jobs'), rl, bar, mini);
       return b;
     }));
   }
@@ -422,14 +459,14 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
   function drawKpis() { const k = kpisOf(baseView()); document.querySelectorAll('#kpis [data-k]').forEach((e) => { e.textContent = RAW ? F(k[e.dataset.k]) : '—'; }); }
   function drawAge() {
     const rows = baseView('age'); const tot = rows.length || 1;
-    const data = AG.map((a) => { const r = rows.filter((l) => l.ab === a.k); return { ...a, n: r.length, locs: new Set(r.map((l) => l.wh + '|' + l.loc)).size }; });
+    const data = AG.map((a) => { const r = rows.filter((l) => l.ab === a.k); return { ...a, n: r.length, locs: new Set(r.filter((l) => l.resQty > 0).map((l) => l.wh + '|' + l.loc)).size }; });
     const max = d3.max(data, (d) => d.n) || 1; const P = d3.format('.1%');
-    const head = el('div', 'exhead'); head.append(el('span', '', 'Pending for'), el('span', '', ''), el('span', '', 'Jobs'), el('span', '', 'Share'), el('span', '', 'Locations'));
+    const head = el('div', 'exhead'); head.append(el('span', '', 'Pending for'), el('span', '', ''), el('span', '', 'Jobs'), el('span', '', 'Share'), el('span', '', 'Reserved'));
     $('#ageChart').replaceChildren(head, ...data.map((d) => {
       const b = el('button', 'exrow'); b.type = 'button'; b.dataset.age = d.k; b.setAttribute('aria-pressed', String(st.age === d.k));
       const l = el('span', 'exl'); const dot = el('i'); dot.style.background = d.c; l.append(dot, d.l);
       const tr = el('span', 'extrack'); const f = el('i'); f.style.width = (100 * d.n / max) + '%'; f.style.background = d.c; if (!d.n) f.style.minWidth = '0'; tr.append(f);
-      b.append(l, tr, el('span', 'exq', F(d.n)), el('span', 'exp', d.n ? P(d.n / tot) : '–'), el('span', 'exs', F(d.locs)));
+      b.append(l, tr, el('span', 'exq', F(d.n)), el('span', 'exp', d.n ? P(d.n / tot) : '–'), (() => { const x = el('span', 'exs', F(d.locs)); if (d.locs) x.style.color = 'var(--r)'; return x; })());
       return b;
     }));
   }
@@ -442,11 +479,12 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
   };
   function drawArea() {
     const box = $('#areaChart'); box.replaceChildren();
+    const resBy = d3.rollup(baseView('area').filter((l) => l.resQty > 0), (v) => new Set(v.map((l) => l.wh + '|' + l.loc)).size, (l) => l.area);
     const rows = d3.rollups(baseView('area'), (v) => v.length, (l) => l.area).sort((a, b) => b[1] - a[1]).slice(0, 20);
     if (!rows.length) { box.append(el('div', 'msg', RAW ? 'No jobs for these filters.' : 'No data yet.')); return; }
     const W = Math.max(280, box.clientWidth), rowH = 26, Hh = rows.length * rowH + 6;
     const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${Hh}`).attr('height', Hh).attr('role', 'img').attr('aria-label', 'Pending jobs by area');
-    const L0 = 110, R = 50;
+    const L0 = 110, R = 120;
     const x = d3.scaleLinear([0, d3.max(rows, (r) => r[1])], [0, Math.max(10, W - L0 - R)]);
     const t = tipFor(box);
     const g = svg.selectAll('g.r').data(rows).join('g').attr('class', 'r').attr('transform', (d, i) => `translate(0,${i * rowH + 3})`).style('cursor', 'pointer')
@@ -454,14 +492,15 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
     g.append('text').attr('x', L0 - 10).attr('y', rowH / 2 - 1).attr('dy', '.35em').attr('text-anchor', 'end').attr('font-size', 12).style('fill', (d) => (d[0] === st.area ? 'var(--y)' : 'var(--muted)')).text((d) => d[0]);
     g.append('rect').attr('x', L0).attr('y', 5).attr('height', rowH - 11).attr('rx', 4).attr('width', (d) => Math.max(2, x(d[1])))
       .style('fill', (d, i) => (d[0] === st.area || (!st.area && i === 0) ? 'var(--y)' : 'var(--b)')).style('fill-opacity', (d, i) => (d[0] === st.area || (!st.area && i === 0) ? 1 : 0.7))
-      .on('mousemove', (e, d) => showTip(box, t, e, d[0], F(d[1]) + ' jobs')).on('mouseleave', () => { t.hidden = true; });
-    g.append('text').attr('x', (d) => L0 + Math.max(2, x(d[1])) + 6).attr('y', rowH / 2 - 1).attr('dy', '.35em').attr('font-size', 12).attr('font-weight', 700).style('fill', 'var(--fg)').text((d) => F(d[1]));
+      .on('mousemove', (e, d) => showTip(box, t, e, d[0], F(d[1]) + ' jobs · ' + F(resBy.get(d[0]) || 0) + ' reserved')).on('mouseleave', () => { t.hidden = true; });
+    g.append('text').attr('x', (d) => L0 + Math.max(2, x(d[1])) + 6).attr('y', rowH / 2 - 1).attr('dy', '.35em').attr('font-size', 12).attr('font-weight', 700).style('fill', 'var(--fg)').text((d) => F(d[1]) + (resBy.get(d[0]) ? ' · ' + F(resBy.get(d[0])) + ' reserved' : ''));
   }
   function drawDays() {
     const box = $('#dayChart'); box.replaceChildren();
     const days = []; for (let i = 29; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); days.push(iso(d)); }
     const base = baseView();
     const cnt = d3.rollup(base, (v) => v.length, (l) => l.day);
+    const rcnt = d3.rollup(base.filter((l) => l.resQty > 0), (v) => v.length, (l) => l.day);
     const data = days.map((d) => [d, cnt.get(d) || 0]);
     const older = base.filter((l) => l.day < days[0]).length;
     const W = Math.max(300, box.clientWidth), Hh = 190, m = { t: 18, r: 8, b: 26, l: 8 };
@@ -471,7 +510,8 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
     const t = tipFor(box);
     svg.selectAll('rect').data(data).join('rect').attr('x', (d) => x(d[0])).attr('width', x.bandwidth()).attr('y', (d) => y(d[1])).attr('height', (d) => y(0) - y(d[1])).attr('rx', 3)
       .style('fill', (d) => (d[0] === days[29] ? 'var(--g)' : 'var(--b)'))
-      .on('mousemove', (e, d) => showTip(box, t, e, d[0], F(d[1]) + ' jobs')).on('mouseleave', () => { t.hidden = true; });
+      .on('mousemove', (e, d) => showTip(box, t, e, d[0], F(d[1]) + ' jobs · ' + F(rcnt.get(d[0]) || 0) + ' reserved')).on('mouseleave', () => { t.hidden = true; });
+    svg.selectAll('rect.res').data(data.filter((d) => rcnt.get(d[0]))).join('rect').attr('class', 'res').attr('x', (d) => x(d[0])).attr('width', x.bandwidth()).attr('y', (d) => y(rcnt.get(d[0]))).attr('height', (d) => y(0) - y(rcnt.get(d[0]))).attr('rx', 3).style('fill', 'var(--r)').style('pointer-events', 'none');
     svg.selectAll('text.v').data(data.filter((d) => d[1])).join('text').attr('class', 'v').attr('x', (d) => x(d[0]) + x.bandwidth() / 2).attr('y', (d) => y(d[1]) - 4).attr('text-anchor', 'middle').attr('font-size', 10).style('fill', 'var(--muted)').text((d) => (x.bandwidth() > 16 ? d[1] : ''));
     const step = Math.ceil(30 / Math.max(1, Math.floor(W / 60)));
     svg.selectAll('text.d').data(days.filter((d, i) => (29 - i) % step === 0)).join('text').attr('class', 'd').attr('x', (d) => x(d) + x.bandwidth() / 2).attr('y', Hh - 8).attr('text-anchor', 'middle').attr('font-size', 10.5).style('fill', 'var(--muted)').text((d) => d.slice(5));
@@ -486,6 +526,7 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
       const td = (c, v) => tr.append(el('td', c, v));
       td('c-wh colwh', l.wh); td('c-sku', l.job); td('c-loc', l.loc); td('c-fam hide-sm', l.area);
       td('num hide-sm', F(l.prio)); td('c-date', l.created.slice(0, 16)); td('num age', F(l.age));
+      { const c = el('td'); if (l.resQty > 0) { const b = el('span', 'badge-hold', 'Reserved ' + F(l.resQty) + (l.resWhy ? ' · ' + l.resWhy : '')); b.title = 'Do not count: stock here is reserved'; c.append(b); tr.classList.add('hold'); } else if (RESAT) c.append(el('span', 'badge-ready', 'Ready')); tr.append(c); }
       frag.append(tr);
     });
     $('#tbody').replaceChildren(frag);
@@ -495,7 +536,7 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
 
   // ---------- exports: selected warehouses, or all when none is selected ----------
   const stamp = () => iso(new Date()) + '_' + new Date().toTimeString().slice(0, 5).replace(':', '');
-  const jobsOut = () => jobView().map((l) => ({ Warehouse: l.wh, Job: l.job, Location: l.loc, Area: l.area, 'Warehouse code': l.code, Priority: l.prio, Created: l.created, 'Age (days)': l.age, 'Pending for': AGL[l.ab] }));
+  const jobsOut = () => jobView().map((l) => ({ Warehouse: l.wh, Job: l.job, Location: l.loc, Area: l.area, 'Warehouse code': l.code, Priority: l.prio, Created: l.created, 'Age (days)': l.age, 'Pending for': AGL[l.ab], 'Reserved qty': l.resQty, 'Reserved reason': l.resWhy, Status: l.resQty > 0 ? 'Reserved, do not count' : 'Ready to count' }));
   function toCSV(rows) {
     if (!rows.length) return '';
     const cols = Object.keys(rows[0]);
@@ -516,8 +557,8 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
     const info = XLSX.utils.aoa_to_sheet([['CAIID Pending Stock Take export'], [], ['Warehouses', scopeName()], ['Grouping', ONLY_GROUPING], ['Created from', st.from || 'Start'], ['Created to', st.to || 'Today'], ['Age filter', st.age ? AGL[st.age] : 'All'], ['Area filter', st.area || 'All'], ['Search', st.q.trim() || '—'], ['Data updated', updatedLabel], ['Exported', new Date().toLocaleString()]]);
     info['!cols'] = [{ wch: 16 }, { wch: 50 }]; XLSX.utils.book_append_sheet(wb, info, 'Info');
     const whs = st.whs.size ? selList() : WAREHOUSES;
-    const sum = whs.map((w) => { const k = kpisOf(baseView().filter((l) => l.wh === w)); return { Warehouse: w, 'Pending jobs': k.jobs, Locations: k.locs, 'Created today': k.today, 'Over 7 days': k.d7, 'Over 30 days': k.d30, 'Oldest (days)': k.oldest }; });
-    if (whs.length > 1) { const k = kpisOf(baseView()); sum.push({ Warehouse: 'Total', 'Pending jobs': k.jobs, Locations: k.locs, 'Created today': k.today, 'Over 7 days': k.d7, 'Over 30 days': k.d30, 'Oldest (days)': k.oldest }); }
+    const sum = whs.map((w) => { const k = kpisOf(baseView().filter((l) => l.wh === w)); return { Warehouse: w, 'Pending jobs': k.jobs, Locations: k.locs, 'Ready to count': k.ready, 'Reserved, do not count': k.hold, 'Created today': k.today, 'Over 7 days': k.d7, 'Over 30 days': k.d30, 'Oldest (days)': k.oldest }; });
+    if (whs.length > 1) { const k = kpisOf(baseView()); sum.push({ Warehouse: 'Total', 'Pending jobs': k.jobs, Locations: k.locs, 'Ready to count': k.ready, 'Reserved, do not count': k.hold, 'Created today': k.today, 'Over 7 days': k.d7, 'Over 30 days': k.d30, 'Oldest (days)': k.oldest }); }
     add('Warehouses', sum);
     const ab = baseView('age'); add('Aging', AG.map((a) => ({ 'Pending for': a.l, Jobs: ab.filter((l) => l.ab === a.k).length })));
     add('Areas', d3.rollups(baseView('area'), (v) => v.length, (l) => l.area).sort((a, b) => b[1] - a[1]).map(([a, n]) => ({ Area: a, Jobs: n })));
@@ -531,11 +572,12 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
   const toggleWh = (w) => { if (w === 'All') st.whs.clear(); else if (st.whs.has(w)) st.whs.delete(w); else st.whs.add(w); st.shown = 200; render(); };
   $('#chips').addEventListener('click', (e) => { const b = e.target.closest('button[data-wh]'); if (b) toggleWh(b.dataset.wh); });
   $('#cards').addEventListener('click', (e) => { const b = e.target.closest('button[data-wh]'); if (b) toggleWh(b.dataset.wh); });
+  $('#resv').addEventListener('change', (e) => { st.resv = e.target.value; st.shown = 200; render(); });
   let qt; $('#q').addEventListener('input', (e) => { clearTimeout(qt); qt = setTimeout(() => { st.q = e.target.value; st.shown = 200; render(); }, 200); });
   $('#ageChart').addEventListener('click', (e) => { const b = e.target.closest('button[data-age]'); if (b) { st.age = st.age === b.dataset.age ? null : b.dataset.age; st.shown = 200; render(); } });
   $('#tagAge').addEventListener('click', () => { st.age = null; render(); });
   $('#tagArea').addEventListener('click', () => { st.area = null; render(); });
-  $('#reset').addEventListener('click', () => { st.whs.clear(); Object.assign(st, { src: 'all', from: '', to: '', q: '', age: null, area: null, sortKey: 'age', sortDir: -1, shown: 200 }); $('#q').value = ''; $('#dFrom').value = ''; $('#dTo').value = ''; render(); });
+  $('#reset').addEventListener('click', () => { st.whs.clear(); Object.assign(st, { resv: 'all', src: 'all', from: '', to: '', q: '', age: null, area: null, sortKey: 'age', sortDir: -1, shown: 200 }); $('#q').value = ''; $('#resv').value = 'all'; $('#dFrom').value = ''; $('#dTo').value = ''; render(); });
   const rangeOf = (k) => {
     const t = new Date();
     if (k === 'y') { const y = new Date(); y.setDate(y.getDate() - 1); return [iso(y), iso(y)]; }
