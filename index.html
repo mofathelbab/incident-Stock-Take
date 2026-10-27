@@ -201,6 +201,12 @@ details.setup ol{margin:10px 0 4px;padding-left:20px;display:grid;gap:6px}
 .alarm .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .alarm button{appearance:none;border:1px solid rgba(248,113,113,.5);background:transparent;color:var(--fg);font:inherit;font-size:12px;font-weight:700;padding:4px 9px;border-radius:999px;cursor:pointer}
 .alarm button:hover{background:rgba(248,113,113,.15)}
+.thumb{width:38px;height:38px;border-radius:8px;object-fit:contain;background:#fff;display:block}
+.sku-link{color:inherit;text-decoration:underline;text-decoration-color:rgba(255,229,0,.45);text-underline-offset:3px}
+.sku-link:hover{color:var(--y)}
+.sku-link::after{content:" ↗";font-size:.85em;opacity:.6}
+.vt td.c-title{white-space:normal;min-width:200px;max-width:320px;font-weight:600;font-size:12.5px}
+.nomatch{color:var(--muted);font-size:11.5px;font-style:italic}
 </style>
 </head>
 <body>
@@ -361,7 +367,8 @@ details.setup ol{margin:10px 0 4px;padding-left:20px;display:grid;gap:6px}
         <option value="any">Any variance</option>
         <option value="zero">No variance</option>
       </select>
-      <input class="in search" id="lnQ" type="search" placeholder="Search job, location, barcode, user" aria-label="Search job lines">
+      <select class="in" id="lnRank" aria-label="Rank barcodes by"><option value="units">Rank by units</option><option value="value">Rank by value (EGP)</option></select>
+      <input class="in search" id="lnQ" type="search" placeholder="Search job, location, barcode, SKU, item" aria-label="Search job lines">
       <button class="btn" id="lnReset" type="button">Reset</button>
       <div class="exbar"><button class="btn ob" id="lnCsv" type="button">CSV</button><button class="btn yb" id="lnXlsx" type="button">Excel</button></div>
     </div>
@@ -372,6 +379,9 @@ details.setup ol{margin:10px 0 4px;padding-left:20px;display:grid;gap:6px}
       <div class="kpi" style="--k:var(--g)"><span class="lbl">Closed</span><span class="big" data-k="closed">—</span><span class="lbl">decided</span></div>
       <div class="kpi" style="--k:var(--r)"><span class="lbl">Short units</span><span class="big" data-k="short">—</span><span class="lbl" data-k2="shortLines"></span></div>
       <div class="kpi" style="--k:var(--p)"><span class="lbl">Excess units</span><span class="big" data-k="excess">—</span><span class="lbl" data-k2="excessLines"></span></div>
+      <div class="kpi" style="--k:var(--r)"><span class="lbl">Short value (EGP)</span><span class="big" data-k="shortVal">—</span><span class="lbl" data-k2="priced"></span></div>
+      <div class="kpi" style="--k:var(--p)"><span class="lbl">Excess value (EGP)</span><span class="big" data-k="excessVal">—</span><span class="lbl">at noon Minutes price</span></div>
+      <div class="kpi" style="--k:var(--y)"><span class="lbl">Net variance value (EGP)</span><span class="big" data-k="netVal">—</span><span class="lbl">excess value − short value</span></div>
       <div class="kpi" style="--k:var(--y)"><span class="lbl">Net variance</span><span class="big" data-k="net">—</span><span class="lbl">scanned − system</span></div>
       <div class="kpi" style="--k:var(--g)"><span class="lbl">Count accuracy</span><span class="big" data-k="acc">—</span><span class="lbl">counted lines with no variance</span></div>
     </div>
@@ -470,8 +480,39 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
         const k = locKey(wh, loc); const o = m.get(k) || { qty: 0, why: new Set() }; o.qty += q; if (why) o.why.add(why); m.set(k, o);
       }
       RES = m; RESAT = at; RESSRC = src;
+      // catalog for the job lines: pbarcode -> SKU, title, family (same SOH data as the SOH dashboard)
+      const cat = new Map();
+      for (const a of d.rows) {
+        const pb = String(a[ix.pbarcode] ?? '').trim(); const sku = String(a[ix.sku] ?? '').trim(); if (!pb || !sku) continue;
+        const o = { sku, title: a[ix.title] || '', family: a[ix.family_code] || '' };
+        if (!cat.has(pb)) cat.set(pb, o); const z = pb.replace(/^0+/, ''); if (z && !cat.has('~' + z)) cat.set('~' + z, o);
+      }
+      CAT = cat; if (typeof lnRender === 'function' && ln.raw) lnRender();
     } catch (e) {}
   }
+  // noon Minutes price and image per SKU, saved by the Refresh Prices bookmark (Supabase stocktake_snapshots row 6), as on the SOH dashboard
+  let CAT = new Map(), PRICES = new Map(), pricesAt = null;
+  async function loadPrices() {
+    try {
+      const A = SB_URL + '/rest/v1/stocktake_snapshots?id=eq.6&select=';
+      const r = await fetch(A + 'updated_at', { headers: H, cache: 'no-store' }); if (!r.ok) return;
+      const j = await r.json(); if (!j[0] || j[0].updated_at === pricesAt) return;
+      const r2 = await fetch(A + 'updated_at,cols,rows', { headers: H, cache: 'no-store' }); if (!r2.ok) return;
+      const d = (await r2.json())[0]; if (!d) return;
+      const ix = Object.fromEntries(d.cols.map((c, i) => [c, i])); const m = new Map();
+      d.rows.forEach((a) => { const sku = a[ix.sku]; if (!sku) return; const price = a[ix.price] === '' || a[ix.price] == null ? null : +a[ix.price]; const was = a[ix.was] === '' || a[ix.was] == null ? null : +a[ix.was];
+        m.set(sku, { price, was: was && price != null && was > price ? was : null, size: a[ix.size] || '', image: a[ix.image] || '', status: a[ix.status] || '' }); });
+      PRICES = m; pricesAt = d.updated_at; if (typeof lnRender === 'function' && ln.raw) lnRender();
+    } catch (e) {}
+  }
+  // job line barcode -> { sku, title, family, price, image, ... } (empty object when the barcode is not in SOH)
+  const catOf = (bc, idp) => {
+    const b = String(bc || '').trim(); const c = CAT.get(b) || CAT.get('~' + b.replace(/^0+/, ''));
+    if (!c) return {}; const p = PRICES.get(c.sku) || {}; return { ...c, ...p };
+  };
+  const PRODUCT_URL = (sku) => 'https://minutes.noon.com/egypt-en/now-product/' + encodeURIComponent(String(sku).trim()) + '/';
+  const thumbOf = (img) => { if (!img) return null; const i = document.createElement('img'); i.className = 'thumb'; i.loading = 'lazy'; i.alt = ''; i.src = /^data:/.test(img) ? img : img + '?width=96'; i.onerror = () => i.remove(); return i; };
+  const skuLinkOf = (sku) => { const a = document.createElement('a'); a.className = 'sku-link'; a.href = PRODUCT_URL(sku); a.target = '_blank'; a.rel = 'noopener'; a.textContent = sku; a.title = 'Open on noon Minutes'; a.addEventListener('click', (e) => e.stopPropagation()); return a; };
   function build() {
     if (!RAW) { L = []; return; }
     const t = Date.now(), today = iso(new Date());
@@ -497,7 +538,7 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
     try {
       if (RAW && !force) {
         const r = await fetch(API + 'updated_at', { headers: H, cache: 'no-store' });
-        if (r.ok) { const j = await r.json(); if (j[0] && j[0].updated_at === lastAt) { await loadReserved(); setLive('ok', 'LIVE'); build(); render(); return; } }
+        if (r.ok) { const j = await r.json(); if (j[0] && j[0].updated_at === lastAt) { await loadReserved(); await loadPrices(); setLive('ok', 'LIVE'); build(); render(); return; } }
       }
       const res = await fetch(API + 'updated_at,row_count,cols,rows', { headers: H, cache: 'no-store' });
       if (!res.ok) throw new Error('Supabase answered ' + res.status + (res.status === 404 ? ' (run the setup SQL first)' : ''));
@@ -505,7 +546,7 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
       if (!j[0]) { RAW = null; setLive('err', 'No data yet'); render('No data yet. Click the Refresh Stock Take bookmark on grocery-tools.noon.team.'); return; }
       RAW = j[0]; lastAt = RAW.updated_at; updatedLabel = when(lastAt);
       $('#loadedAt').textContent = updatedLabel;
-      await loadReserved(); build(); setLive('ok', 'LIVE'); render();
+      await loadReserved(); await loadPrices(); build(); setLive('ok', 'LIVE'); render();
     } catch (e) { setLive('err', 'Load failed'); if (!RAW) render('Could not load the data. ' + e.message); }
   }
 
@@ -724,7 +765,7 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
   const LN_FIRST = ['partner_warehouse_code', 'job_nr', 'jobNr', 'process_type', 'grouping_key', 'job_status', 'warehouse_code', 'zone_code', 'job_location_code', 'username', 'barcode', 'pbarcode_canonical', 'id_partner', 'expiry_date', 'barcode_status', 'scanned_qty', 'system_qty', 'qty_variance', 'job_creation_date', 'job_started_at', 'decided_by', 'user_finished_job_at', 'job_finalized_at'];
   const num = (v) => { const n = Number(String(v ?? '').replace(/,/g, '')); return isFinite(n) ? n : 0; };
   const SF = d3.format('+,');
-  const ln = { raw: null, at: null, rows: [], cols: [], g: 'all', s: 'all', wh: 'all', from: '', to: '', pt: 'all', zone: 'all', bs: 'all', vr: 'all', q: '', shown: 200 };
+  const ln = { rank: 'units', raw: null, at: null, rows: [], cols: [], g: 'all', s: 'all', wh: 'all', from: '', to: '', pt: 'all', zone: 'all', bs: 'all', vr: 'all', q: '', shown: 200 };
   const curMonth = () => { const d = new Date(); return [iso(new Date(d.getFullYear(), d.getMonth(), 1)), iso(new Date(d.getFullYear(), d.getMonth() + 1, 0))]; };
   function lnBuild() {
     const d = ln.raw; ln.rows = []; ln.cols = [];
@@ -756,7 +797,7 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
     return ln.rows.filter((r) => (skip === 'g' || ln.g === 'all' || r.g === ln.g) && (skip === 's' || ln.s === 'all' || r.s === ln.s) && (ln.wh === 'all' || r.wh === ln.wh)
       && (!ln.from || r.day >= ln.from) && (!ln.to || r.day <= ln.to) && (skip === 'pt' || ln.pt === 'all' || r.pt === ln.pt) && (ln.zone === 'all' || r.zone === ln.zone) && (ln.bs === 'all' || r.bs === ln.bs)
       && (ln.vr === 'all' || (ln.vr === 'short' ? r.counted && r.v < 0 : ln.vr === 'excess' ? r.counted && r.v > 0 : ln.vr === 'any' ? r.counted && r.v !== 0 : r.counted && r.v === 0))
-      && (!q || Object.values(r.o).some((v) => String(v).toLowerCase().includes(q))));
+      && (!q || Object.values(r.o).some((v) => String(v).toLowerCase().includes(q)) || (() => { const c = catOf(r.bc, r.o.id_partner); return matchQ(q, c.sku, c.title); })()));
   };
   const lnView = () => lnBase();
   const lnStats = (rs) => { const c = rs.filter((r) => r.counted); return { lines: rs.length, jobs: new Set(rs.map((r) => r.wh + '|' + r.job)).size, locs: new Set(rs.map((r) => r.wh + '|' + r.loc)).size, pending: rs.filter((r) => r.s === 'pending').length, pc: rs.filter((r) => r.s === 'pending_confirmation').length, closed: rs.filter((r) => r.s === 'closed').length, counted: c.length, short: d3.sum(c, (r) => (r.v < 0 ? -r.v : 0)), excess: d3.sum(c, (r) => (r.v > 0 ? r.v : 0)), net: d3.sum(c, (r) => r.v), shortLines: c.filter((r) => r.v < 0).length, excessLines: c.filter((r) => r.v > 0).length, ok: c.filter((r) => r.v === 0).length }; };
@@ -770,18 +811,24 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
       o.whs.add(r.wh); o.locs.add(r.wh + '|' + r.loc); o.jobs.add(r.wh + '|' + r.job); if (r.s === 'pending_confirmation') o.pc++;
       const t = String(r.o.user_finished_job_at || r.o.job_creation_date || '').slice(0, 16).replace('T', ' '); if (t > o.last) o.last = t;
     }
-    return [...m.values()];
+    return [...m.values()].map((b) => { const c = catOf(b.bc, b.partner); const pr = c.price != null ? c.price : null; return Object.assign(b, { sku: c.sku || '', title: c.title || '', image: c.image || '', price: pr, netVal: pr != null ? b.net * pr : null, shortVal: pr != null ? b.short * pr : null, excessVal: pr != null ? b.excess * pr : null }); });
   }
+  const lnValues = (rs) => { let sv = 0, xv = 0; for (const r of rs) { if (!r.counted || !r.v) continue; const c = catOf(r.bc); if (c.price == null) continue; if (r.v < 0) sv += -r.v * c.price; else xv += r.v * c.price; } return { sv, xv, nv: xv - sv }; };
+  const EGP = d3.format(',.0f'); const egp = (v) => (v == null ? '—' : (v < 0 ? '−' : v > 0 ? '+' : '') + EGP(Math.abs(v)));
+  const rankKey = (b) => (ln.rank === 'value' ? (b.netVal != null ? b.netVal : 0) : b.net);
   const lvlOf = (b) => (b.net <= -CRITICAL_SHORT_UNITS ? ['crit', 'Critical'] : b.net < 0 ? ['watch', 'Watch'] : ['info', 'Excess']);
   function lnVarTable(id, list, empty) {
     const t = $(id); t.replaceChildren();
-    const hr = el('tr'); [['Alarm', ''], ['Barcode', ''], ['Partner', ''], ['WH', ''], ['Locations', 'num'], ['Lines', 'num'], ['System', 'num'], ['Scanned', 'num'], ['Net', 'num'], ['Short', 'num'], ['Excess', 'num'], ['Last count', '']].forEach(([h, c]) => hr.append(el('th', c, h)));
+    const hr = el('tr'); [['Alarm', ''], ['', ''], ['Barcode', ''], ['SKU', ''], ['Item', ''], ['WH', ''], ['Locations', 'num'], ['Lines', 'num'], ['System', 'num'], ['Scanned', 'num'], ['Net', 'num'], ['Price / unit (EGP)', 'num'], ['Short value', 'num'], ['Excess value', 'num'], ['Net value (EGP)', 'num'], ['Last count', '']].forEach(([h, c]) => hr.append(el('th', c, h)));
     const th = el('thead'); th.append(hr); const tb = el('tbody');
-    if (!list.length) { const tr = el('tr'); const td = el('td', '', empty); td.colSpan = 12; td.style.color = 'var(--muted)'; tr.append(td); tb.append(tr); }
+    if (!list.length) { const tr = el('tr'); const td = el('td', '', empty); td.colSpan = 16; td.style.color = 'var(--muted)'; tr.append(td); tb.append(tr); }
     list.forEach((b) => {
       const tr = el('tr', 'click'); tr.dataset.bc = b.bc; tr.title = 'Show the lines for ' + b.bc + (b.pc ? ' · ' + b.pc + ' line(s) still pending confirmation' : '');
       const [k, l] = lvlOf(b); const c0 = el('td'); c0.append(el('span', 'lvl ' + k, l)); tr.append(c0);
-      tr.append(el('td', 'c-loc', b.bc), el('td', 'c-fam', b.partner), el('td', 'c-wh', [...b.whs].map((w) => w.slice(-2)).join(', ')), el('td', 'num', F(b.locs.size)), el('td', 'num', F(b.lines)), el('td', 'num', F(b.sys)), el('td', 'num', F(b.scan)), el('td', 'num ' + (b.net < 0 ? 'neg' : b.net > 0 ? 'pos' : ''), b.net ? SF(b.net) : '0'), el('td', 'num neg', b.short ? F(b.short) : ''), el('td', 'num pos', b.excess ? F(b.excess) : ''), el('td', 'c-date', b.last));
+      { const c = el('td'); const im = thumbOf(b.image); if (im) c.append(im); tr.append(c); }
+      tr.append(el('td', 'c-loc', b.bc));
+      { const c = el('td', 'c-sku'); if (b.sku) c.append(skuLinkOf(b.sku)); else c.append(el('span', 'nomatch', 'not in SOH')); tr.append(c); }
+      tr.append(el('td', 'c-title', b.title || ''), el('td', 'c-wh', [...b.whs].map((w) => w.slice(-2)).join(', ')), el('td', 'num', F(b.locs.size)), el('td', 'num', F(b.lines)), el('td', 'num', F(b.sys)), el('td', 'num', F(b.scan)), el('td', 'num ' + (b.net < 0 ? 'neg' : b.net > 0 ? 'pos' : ''), b.net ? SF(b.net) : '0'), el('td', 'num', b.price != null ? d3.format(',.2f')(b.price) : '—'), el('td', 'num neg', b.shortVal ? egp(-b.shortVal) : b.price != null ? '0' : '—'), el('td', 'num pos', b.excessVal ? egp(b.excessVal) : b.price != null ? '0' : '—'), el('td', 'num ' + (b.netVal < 0 ? 'neg' : b.netVal > 0 ? 'pos' : ''), egp(b.netVal)), el('td', 'c-date', b.last));
       tb.append(tr);
     });
     t.append(th, tb);
@@ -799,44 +846,52 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
     if (ln.from || ln.to) ex.push('created ' + (ln.from || mFrom) + ' → ' + (ln.to || mTo)); if (ln.pt !== 'all') ex.push(ln.pt); if (ln.zone !== 'all') ex.push('zone ' + ln.zone); if (ln.bs !== 'all') ex.push(ln.bs); if (ln.vr !== 'all') ex.push($('#lnVar').selectedOptions[0].text.toLowerCase()); if (ln.q.trim()) ex.push('search "' + ln.q.trim() + '"');
     $('#lnFlt').textContent = ex.length ? 'Filtered: ' + ex.join(' · ') : '';
     const v = lnView(); const k = lnStats(v); const P = d3.format('.1%');
-    const kv = { lines: F(k.lines), pending: F(k.pending), pc: F(k.pc), closed: F(k.closed), short: k.short ? '−' + F(k.short) : '0', excess: k.excess ? '+' + F(k.excess) : '0', net: k.net ? SF(k.net) : '0', acc: k.counted ? P(k.ok / k.counted) : '—' };
+    let sv = 0, xv = 0, pricedN = 0, cntN = 0; for (const r of v) { if (!r.counted || !r.v) continue; cntN++; const c = catOf(r.bc, r.o.id_partner); if (c.price == null) continue; pricedN++; if (r.v < 0) sv += -r.v * c.price; else xv += r.v * c.price; }
+    const kv = { lines: F(k.lines), pending: F(k.pending), pc: F(k.pc), closed: F(k.closed), short: k.short ? '−' + F(k.short) : '0', excess: k.excess ? '+' + F(k.excess) : '0', net: k.net ? SF(k.net) : '0', acc: k.counted ? P(k.ok / k.counted) : '—', shortVal: sv ? '−' + EGP(sv) : '0', excessVal: xv ? '+' + EGP(xv) : '0', netVal: egp(xv - sv) || '0' };
     document.querySelectorAll('#lnKpis [data-k]').forEach((e) => { e.textContent = ln.raw ? kv[e.dataset.k] : '—'; });
-    const k2 = { jobs: F(k.jobs) + ' jobs · ' + F(k.locs) + ' locations', shortLines: F(k.shortLines) + ' lines short', excessLines: F(k.excessLines) + ' lines excess' };
+    const k2 = { jobs: F(k.jobs) + ' jobs · ' + F(k.locs) + ' locations', shortLines: F(k.shortLines) + ' lines short', excessLines: F(k.excessLines) + ' lines excess', priced: PRICES.size ? F(pricedN) + ' of ' + F(cntN) + ' variance lines priced' : 'run Refresh Prices on noon Minutes' };
     document.querySelectorAll('#lnKpis [data-k2]').forEach((e) => { e.textContent = ln.raw ? k2[e.dataset.k2] : ''; });
     // barcode variance (follows every filter, statuses limited to counted ones)
     const bcs = lnByBarcode(v);
-    const shorts = bcs.filter((b) => b.net < 0).sort((a, b) => a.net - b.net || b.locs.size - a.locs.size);
-    const excess = bcs.filter((b) => b.net > 0).sort((a, b) => b.net - a.net);
+    const shorts = bcs.filter((b) => b.net < 0).sort((a, b) => rankKey(a) - rankKey(b) || a.net - b.net);
+    const excess = bcs.filter((b) => b.net > 0).sort((a, b) => rankKey(b) - rankKey(a) || b.net - a.net);
     lnVarTable('#lnShort', shorts.slice(0, TOP_N), ln.raw ? 'No short barcodes for these filters.' : 'No data yet.');
     lnVarTable('#lnExcess', excess.slice(0, TOP_N), ln.raw ? 'No excess barcodes for these filters.' : 'No data yet.');
     const crit = shorts.filter((b) => b.net <= -CRITICAL_SHORT_UNITS);
     const al = $('#lnAlarm'); al.hidden = !crit.length; al.replaceChildren();
     if (crit.length) {
-      const body = el('div'); const p1 = el('div'); p1.append(el('b', '', F(crit.length) + ' barcode' + (crit.length > 1 ? 's are' : ' is') + ' short by ' + CRITICAL_SHORT_UNITS + '+ units'), ' · ' + F(d3.sum(crit, (b) => -b.net)) + ' units missing in total. Check these locations before closing the jobs.');
-      const tags = el('div', 'tags'); crit.slice(0, 12).forEach((b) => { const x = el('button', '', b.bc + '  ' + SF(b.net)); x.type = 'button'; x.dataset.bc = b.bc; tags.append(x); });
+      const body = el('div'); const p1 = el('div'); p1.append(el('b', '', F(crit.length) + ' barcode' + (crit.length > 1 ? 's are' : ' is') + ' short by ' + CRITICAL_SHORT_UNITS + '+ units'), ' · ' + F(d3.sum(crit, (b) => -b.net)) + ' units missing in total' + (crit.some((b) => b.netVal != null) ? ' (≈ EGP ' + EGP(-d3.sum(crit, (b) => b.netVal || 0)) + ')' : '') + '. Check these locations before closing the jobs.');
+      const tags = el('div', 'tags'); crit.slice(0, 12).forEach((b) => { const x = el('button', '', (b.title ? b.title.slice(0, 28) + ' · ' : b.bc + '  ') + SF(b.net)); x.type = 'button'; x.dataset.bc = b.bc; tags.append(x); });
       body.append(p1, tags); al.append(el('span', 'ttl', '⚠ Needs attention'), body);
     }
     // by warehouse: all statuses side by side (status chip ignored here)
     const base = lnBase('s'); const sum = $('#lnSum'); sum.replaceChildren();
-    const hr = el('tr'); [['Warehouse', ''], ['Pending', 'num'], ['Pending conf.', 'num'], ['Closed', 'num'], ['Lines', 'num'], ['Jobs', 'num'], ['Locations', 'num'], ['Short units', 'num'], ['Excess units', 'num'], ['Net', 'num'], ['Accuracy', 'num'], ['Short barcodes', 'num']].forEach(([h, c]) => hr.append(el('th', c, h)));
+    const hr = el('tr'); [['Warehouse', ''], ['Pending', 'num'], ['Pending conf.', 'num'], ['Closed', 'num'], ['Lines', 'num'], ['Jobs', 'num'], ['Locations', 'num'], ['Short units', 'num'], ['Excess units', 'num'], ['Net', 'num'], ['Short value (EGP)', 'num'], ['Excess value (EGP)', 'num'], ['Net value (EGP)', 'num'], ['Accuracy', 'num'], ['Short barcodes', 'num']].forEach(([h, c]) => hr.append(el('th', c, h)));
     const th = el('thead'); th.append(hr); const tb = el('tbody');
     const whs = ln.wh === 'all' ? WAREHOUSES : [ln.wh];
     [...whs, ...(whs.length > 1 ? ['Total'] : [])].forEach((w) => {
       const rs = w === 'Total' ? base : base.filter((r) => r.wh === w); const s = lnStats(rs); const nb = lnByBarcode(rs).filter((b) => b.net < 0).length;
-      const tr = el('tr', w === 'Total' ? 'tot' : ''); tr.append(el('td', 'c-wh', w), el('td', 'num', F(s.pending)), el('td', 'num', F(s.pc)), el('td', 'num', F(s.closed)), el('td', 'num', F(s.lines)), el('td', 'num', F(s.jobs)), el('td', 'num', F(s.locs)), el('td', 'num neg', s.short ? '−' + F(s.short) : '0'), el('td', 'num pos', s.excess ? '+' + F(s.excess) : '0'), el('td', 'num ' + (s.net < 0 ? 'neg' : s.net > 0 ? 'pos' : ''), s.net ? SF(s.net) : '0'), el('td', 'num', s.counted ? P(s.ok / s.counted) : '—'), el('td', 'num ' + (nb ? 'neg' : ''), F(nb)));
+      const tr = el('tr', w === 'Total' ? 'tot' : ''); tr.append(el('td', 'c-wh', w), el('td', 'num', F(s.pending)), el('td', 'num', F(s.pc)), el('td', 'num', F(s.closed)), el('td', 'num', F(s.lines)), el('td', 'num', F(s.jobs)), el('td', 'num', F(s.locs)), el('td', 'num neg', s.short ? '−' + F(s.short) : '0'), el('td', 'num pos', s.excess ? '+' + F(s.excess) : '0'), el('td', 'num ' + (s.net < 0 ? 'neg' : s.net > 0 ? 'pos' : ''), s.net ? SF(s.net) : '0'), ...(() => { const x = lnValues(rs); return [el('td', 'num neg', x.sv ? egp(-x.sv) : '0'), el('td', 'num pos', x.xv ? egp(x.xv) : '0'), el('td', 'num ' + (x.nv < 0 ? 'neg' : x.nv > 0 ? 'pos' : ''), x.nv ? egp(x.nv) : '0')]; })(), el('td', 'num', s.counted ? P(s.ok / s.counted) : '—'), el('td', 'num ' + (nb ? 'neg' : ''), F(nb)));
       tb.append(tr);
     });
     sum.append(th, tb);
     // lines table
-    const t = $('#lnTbl'); const h = el('tr'); ln.cols.forEach((c) => h.append(el('th', '', c))); t.tHead.replaceChildren(h);
+    const XC = ['image', 'sku', 'item_title', 'price_egp', 'variance_value_egp'];
+    const t = $('#lnTbl'); const h = el('tr'); [...XC, ...ln.cols].forEach((c) => h.append(el('th', '', c === 'image' ? '' : c))); t.tHead.replaceChildren(h);
     const frag = document.createDocumentFragment();
-    v.slice(0, ln.shown).forEach((r) => { const tr = el('tr'); ln.cols.forEach((c) => { const cls = c === 'partner_warehouse_code' ? 'c-wh' : c === 'job_status' ? (r.s === 'closed' ? 'c-date' : r.s === 'pending' ? 'c-date r' : 'c-date o') : c === 'qty_variance' ? 'num ' + (r.counted && r.v < 0 ? 'neg' : r.counted && r.v > 0 ? 'pos' : '') : /_qty$/.test(c) ? 'num' : /date|_at$/.test(c) ? 'c-date' : /loc|job_?nr|barcode|zone/i.test(c) ? 'c-loc' : ''; tr.append(el('td', cls, r.o[c] ?? '')); }); frag.append(tr); });
+    v.slice(0, ln.shown).forEach((r) => { const tr = el('tr'); const c0 = catOf(r.bc, r.o.id_partner);
+      { const c = el('td'); const im = thumbOf(c0.image); if (im) c.append(im); tr.append(c); }
+      { const c = el('td', 'c-sku'); if (c0.sku) c.append(skuLinkOf(c0.sku)); else c.append(el('span', 'nomatch', 'not in SOH')); tr.append(c); }
+      tr.append(el('td', 'c-title', c0.title || ''), el('td', 'num', c0.price != null ? d3.format(',.2f')(c0.price) : '—'));
+      { const val = r.counted && c0.price != null ? r.v * c0.price : null; tr.append(el('td', 'num ' + (val < 0 ? 'neg' : val > 0 ? 'pos' : ''), val == null ? '—' : egp(val))); }
+      ln.cols.forEach((c) => { const cls = c === 'partner_warehouse_code' ? 'c-wh' : c === 'job_status' ? (r.s === 'closed' ? 'c-date' : r.s === 'pending' ? 'c-date r' : 'c-date o') : c === 'qty_variance' ? 'num ' + (r.counted && r.v < 0 ? 'neg' : r.counted && r.v > 0 ? 'pos' : '') : /_qty$/.test(c) ? 'num' : /date|_at$/.test(c) ? 'c-date' : /loc|job_?nr|barcode|zone/i.test(c) ? 'c-loc' : ''; tr.append(el('td', cls, r.o[c] ?? '')); }); frag.append(tr); });
     t.tBodies[0].replaceChildren(frag);
     $('#lnCount').textContent = ln.raw ? (v.length ? `Showing ${F(Math.min(ln.shown, v.length))} of ${F(v.length)} job lines` : 'No job lines match these filters.') : 'No job lines yet. Run the Refresh Job Lines bookmark on grocery-tools.noon.team.';
     $('#lnMore').hidden = v.length <= ln.shown;
   }
   async function lnLoad(force) {
     try {
+      await Promise.all([loadReserved(), loadPrices()]);
       if (ln.raw && !force) { const r = await fetch(LN_API + 'updated_at', { headers: H, cache: 'no-store' }); if (r.ok) { const j = await r.json(); if (j[0] && j[0].updated_at === ln.at) { lnBuild(); lnRender(); return; } } }
       const r = await fetch(LN_API + 'updated_at,batch,parts', { headers: H, cache: 'no-store' });
       if (!r.ok) { $('#lnCount').textContent = 'Job lines not set up yet (run stocktake_lines_v2.sql in Supabase).'; return; }
@@ -857,8 +912,8 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
       lnBuild(); lnRender();
     } catch (e) { $('#lnCount').textContent = 'Could not load job lines. ' + e.message; }
   }
-  const lnOut = () => lnView().map((r) => Object.fromEntries(ln.cols.map((c) => [c, r.o[c] ?? ''])));
-  const bcOut = (list) => list.map((b) => ({ Alarm: lvlOf(b)[1], Barcode: b.bc, Partner: b.partner, Warehouses: [...b.whs].join(', '), Locations: b.locs.size, Jobs: b.jobs.size, Lines: b.lines, 'System qty': b.sys, 'Scanned qty': b.scan, 'Net variance': b.net, 'Short units': b.short, 'Excess units': b.excess, 'Lines pending confirmation': b.pc, 'Last count': b.last }));
+  const lnOut = () => lnView().map((r) => { const c = catOf(r.bc, r.o.id_partner); return { sku: c.sku || '', item_title: c.title || '', price_egp: c.price ?? '', variance_value_egp: r.counted && c.price != null ? Math.round(r.v * c.price * 100) / 100 : '', ...Object.fromEntries(ln.cols.map((k) => [k, r.o[k] ?? ''])) }; });
+  const bcOut = (list) => list.map((b) => ({ Alarm: lvlOf(b)[1], Barcode: b.bc, SKU: b.sku, Item: b.title, 'Price / unit (EGP)': b.price ?? '', 'Short value (EGP)': b.shortVal != null ? -Math.round(b.shortVal) : '', 'Excess value (EGP)': b.excessVal != null ? Math.round(b.excessVal) : '', 'Net value (EGP)': b.netVal != null ? Math.round(b.netVal) : '', Partner: b.partner, Warehouses: [...b.whs].join(', '), Locations: b.locs.size, Jobs: b.jobs.size, Lines: b.lines, 'System qty': b.sys, 'Scanned qty': b.scan, 'Net variance': b.net, 'Short units': b.short, 'Excess units': b.excess, 'Lines pending confirmation': b.pc, 'Last count': b.last }));
   const lnFile = () => `StockTake_lines_${curMonth()[0].slice(0, 7)}_${ln.wh === 'all' ? 'All' : ln.wh}_${stamp()}`;
   $('#lnCsv').addEventListener('click', () => { const rows = lnOut(); if (!rows.length) { alert('No job lines match these filters.'); return; } download(new Blob([toCSV(rows)], { type: 'text/csv;charset=utf-8' }), lnFile() + '.csv'); });
   $('#lnXlsx').addEventListener('click', () => {
@@ -867,10 +922,10 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
     const wb = XLSX.utils.book_new();
     const add = (name, rs) => { const ws = XLSX.utils.json_to_sheet(rs.length ? rs : [{ Note: 'No rows' }]); const cols = Object.keys(rs[0] || { Note: '' }); ws['!cols'] = cols.map((c) => ({ wch: Math.min(40, Math.max(c.length + 2, ...rs.slice(0, 300).map((r) => String(r[c] ?? '').length + 1))) })); XLSX.utils.book_append_sheet(wb, ws, name); };
     const bcs = lnByBarcode(lnView());
-    add('Short barcodes', bcOut(bcs.filter((b) => b.net < 0).sort((a, b) => a.net - b.net)));
-    add('Excess barcodes', bcOut(bcs.filter((b) => b.net > 0).sort((a, b) => b.net - a.net)));
+    add('Short barcodes', bcOut(bcs.filter((b) => b.net < 0).sort((a, b) => rankKey(a) - rankKey(b))));
+    add('Excess barcodes', bcOut(bcs.filter((b) => b.net > 0).sort((a, b) => rankKey(b) - rankKey(a))));
     const base = lnBase('s'); const whs = ln.wh === 'all' ? WAREHOUSES : [ln.wh];
-    add('By warehouse', [...whs, ...(whs.length > 1 ? ['Total'] : [])].map((w) => { const s = lnStats(w === 'Total' ? base : base.filter((r) => r.wh === w)); return { Warehouse: w, Pending: s.pending, 'Pending confirmation': s.pc, Closed: s.closed, Lines: s.lines, Jobs: s.jobs, Locations: s.locs, 'Short units': s.short, 'Excess units': s.excess, 'Net variance': s.net, 'Accuracy %': s.counted ? Math.round(1000 * s.ok / s.counted) / 10 : '' }; }));
+    add('By warehouse', [...whs, ...(whs.length > 1 ? ['Total'] : [])].map((w) => { const s = lnStats(w === 'Total' ? base : base.filter((r) => r.wh === w)); return { Warehouse: w, Pending: s.pending, 'Pending confirmation': s.pc, Closed: s.closed, Lines: s.lines, Jobs: s.jobs, Locations: s.locs, 'Short units': s.short, 'Excess units': s.excess, 'Net variance': s.net, ...(() => { const x = lnValues(w === 'Total' ? base : base.filter((r) => r.wh === w)); return { 'Short value (EGP)': -Math.round(x.sv), 'Excess value (EGP)': Math.round(x.xv), 'Net value (EGP)': Math.round(x.nv) }; })(), 'Accuracy %': s.counted ? Math.round(1000 * s.ok / s.counted) / 10 : '' }; }));
     add('Job lines', rows);
     XLSX.writeFile(wb, lnFile() + '.xlsx');
   });
@@ -882,13 +937,14 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
   $('#lnZone').addEventListener('change', (e) => lnSet({ zone: e.target.value }));
   $('#lnBs').addEventListener('change', (e) => lnSet({ bs: e.target.value }));
   $('#lnVar').addEventListener('change', (e) => lnSet({ vr: e.target.value }));
+  $('#lnRank').addEventListener('change', (e) => lnSet({ rank: e.target.value }));
   $('#lnFrom').addEventListener('change', (e) => { let f = e.target.value, t = ln.to; if (f && t && f > t) [f, t] = [t, f]; $('#lnFrom').value = f; $('#lnTo').value = t; lnSet({ from: f, to: t }); });
   $('#lnTo').addEventListener('change', (e) => { let f = ln.from, t = e.target.value; if (f && t && f > t) [f, t] = [t, f]; $('#lnFrom').value = f; $('#lnTo').value = t; lnSet({ from: f, to: t }); });
   let lqt; $('#lnQ').addEventListener('input', (e) => { clearTimeout(lqt); lqt = setTimeout(() => lnSet({ q: e.target.value }), 200); });
   const lnPick = (bc) => { $('#lnQ').value = bc; lnSet({ q: bc }); $('#lnTbl').scrollIntoView({ behavior: 'smooth', block: 'start' }); };
   ['#lnShort', '#lnExcess'].forEach((id) => $(id).addEventListener('click', (e) => { const tr = e.target.closest('tr[data-bc]'); if (tr) lnPick(tr.dataset.bc); }));
   $('#lnAlarm').addEventListener('click', (e) => { const b = e.target.closest('button[data-bc]'); if (b) lnPick(b.dataset.bc); });
-  $('#lnReset').addEventListener('click', () => { Object.assign(ln, { g: 'all', s: 'all', wh: 'all', from: '', to: '', pt: 'all', zone: 'all', bs: 'all', vr: 'all', q: '', shown: 200 }); ['#lnWh', '#lnZone', '#lnBs', '#lnVar'].forEach((id) => { $(id).value = 'all'; }); $('#lnFrom').value = $('#lnTo').value = $('#lnQ').value = ''; lnRender(); });
+  $('#lnReset').addEventListener('click', () => { Object.assign(ln, { rank: 'units', g: 'all', s: 'all', wh: 'all', from: '', to: '', pt: 'all', zone: 'all', bs: 'all', vr: 'all', q: '', shown: 200 }); ['#lnWh', '#lnZone', '#lnBs', '#lnVar', '#lnRank'].forEach((id) => { $(id).value = 'all'; }); $('#lnFrom').value = $('#lnTo').value = $('#lnQ').value = ''; lnRender(); });
   $('#lnMore').addEventListener('click', () => { ln.shown += 200; lnRender(); });
   $('#refresh').addEventListener('click', () => lnLoad(true));
 
