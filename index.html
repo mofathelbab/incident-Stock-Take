@@ -179,8 +179,28 @@ details.setup{background:var(--panel);border:1px solid var(--line);border-radius
 details.setup summary{cursor:pointer;color:var(--fg);font-weight:700}
 details.setup ol{margin:10px 0 4px;padding-left:20px;display:grid;gap:6px}
 .bmk{display:inline-block;background:var(--y);color:var(--yink);font-weight:800;padding:7px 12px;border-radius:999px;text-decoration:none;cursor:grab}
-#lnSum th,#lnTbl th{padding:10px 12px;text-align:left;white-space:nowrap}
-#lnSum th.num{text-align:right}
+#lnSum th,#lnTbl th,.vt th{padding:10px 12px;text-align:left;white-space:nowrap;position:sticky;top:0;background:var(--panel2);z-index:1}
+.vt th.num{text-align:right}
+.vt td{white-space:nowrap}
+.vt tbody tr.click{cursor:pointer}
+.vt tbody tr.click:hover td{background:rgba(255,229,0,.06)}
+.vt tr.tot td{font-weight:800;border-top:2px solid var(--line)}
+.lnstack{display:grid;gap:16px}
+.lnf{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.sub-panel{background:var(--panel2)}
+.sub-panel .tablewrap{background:var(--panel)}
+.neg{color:var(--r);font-weight:800}
+.pos{color:var(--p);font-weight:800}
+.lvl{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:800;white-space:nowrap}
+.lvl.crit{background:rgba(248,113,113,.18);color:var(--r)}
+.lvl.watch{background:rgba(251,146,60,.16);color:var(--o)}
+.lvl.info{background:rgba(167,139,250,.16);color:var(--p)}
+.alarm{display:flex;gap:12px;align-items:flex-start;border:1px solid rgba(248,113,113,.45);background:rgba(248,113,113,.08);border-radius:14px;padding:12px 14px;font-size:13.5px}
+.alarm b{color:var(--r)}
+.alarm .ttl{font-weight:800;color:var(--r);white-space:nowrap}
+.alarm .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.alarm button{appearance:none;border:1px solid rgba(248,113,113,.5);background:transparent;color:var(--fg);font:inherit;font-size:12px;font-weight:700;padding:4px 9px;border-radius:999px;cursor:pointer}
+.alarm button:hover{background:rgba(248,113,113,.15)}
 </style>
 </head>
 <body>
@@ -198,7 +218,7 @@ details.setup ol{margin:10px 0 4px;padding-left:20px;display:grid;gap:6px}
     </div>
   </div>
   <nav class="nav" aria-label="Sections">
-    <a href="#warehouses">Overview</a><a href="#aging">Aging</a><a href="#areas">Areas</a><a href="#daily">By day</a><a href="#jobsec">Jobs</a><a href="#linesec">Job lines (month)</a>
+    <a href="#warehouses">Overview</a><a href="#aging">Aging</a><a href="#areas">Areas</a><a href="#daily">By day</a><a href="#jobsec">Jobs</a><a href="#linesec">Job lines &amp; variance</a>
   </nav>
 </header>
 
@@ -312,40 +332,70 @@ details.setup ol{margin:10px 0 4px;padding-left:20px;display:grid;gap:6px}
   <section class="panel" id="linesec">
     <div class="ph">
       <div class="ico" style="--ic:rgba(255,229,0,.14);--icc:var(--y)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg></div>
-      <div><h2 class="h">Stocktake job lines · <span id="lnMonth" class="y">this month</span></h2>
-      <p class="note">Incident and full stock take, pending confirmation and closed, from the Stocktake Job Lines report. Updated <b id="lnAt">—</b> by the Refresh Job Lines bookmark.</p></div>
+      <div><h2 class="h">Stocktake job lines · <span id="lnMonth" style="color:var(--y)">this month</span></h2>
+      <p class="note">Incident and full stock take: pending, pending confirmation and closed, from the Stocktake Job Lines report. Updated <b id="lnAt">—</b> by the Refresh Job Lines bookmark. <span id="lnFlt"></span></p></div>
     </div>
-    <div class="inc-top">
+    <div class="lnf">
       <div class="chips" id="lnGrp" role="group" aria-label="Grouping key">
-        <button class="chip" type="button" data-g="all" aria-pressed="true">All groupings</button>
-        <button class="chip" type="button" data-g="incident" aria-pressed="false">Incident stock take</button>
-        <button class="chip" type="button" data-g="full" aria-pressed="false">Full stock take</button>
+        <button class="chip" type="button" data-g="all">All groupings</button>
+        <button class="chip" type="button" data-g="incident">Incident</button>
+        <button class="chip" type="button" data-g="full">Full</button>
       </div>
       <div class="chips" id="lnSt" role="group" aria-label="Status">
-        <button class="chip" type="button" data-s="all" aria-pressed="true">All statuses</button>
-        <button class="chip" type="button" data-s="pending_confirmation" aria-pressed="false">Pending confirmation</button>
-        <button class="chip" type="button" data-s="closed" aria-pressed="false">Closed</button>
+        <button class="chip" type="button" data-s="all">All statuses</button>
+        <button class="chip" type="button" data-s="pending">Pending</button>
+        <button class="chip" type="button" data-s="pending_confirmation">Pending confirmation</button>
+        <button class="chip" type="button" data-s="closed">Closed</button>
       </div>
+    </div>
+    <div class="lnf"><span class="lbl">Process type</span><div class="chips" id="lnPt" role="group" aria-label="Process type"></div></div>
+    <div class="lnf">
       <select class="in" id="lnWh" aria-label="Warehouse"><option value="all">All warehouses</option></select>
-      <input class="in search" id="lnQ" type="search" placeholder="Search job, location, SKU, user" aria-label="Search job lines">
-      <div class="exbar">
-        <button class="btn ob" id="lnCsv" type="button">CSV</button>
-        <button class="btn yb" id="lnXlsx" type="button">Excel</button>
-      </div>
+      <div class="dr" role="group" aria-label="Created date"><span>Created</span><input class="in" id="lnFrom" type="date" aria-label="Created from"><span>to</span><input class="in" id="lnTo" type="date" aria-label="Created to"></div>
+      <select class="in" id="lnZone" aria-label="Zone"><option value="all">All zones</option></select>
+      <select class="in" id="lnBs" aria-label="Barcode status"><option value="all">All barcode statuses</option></select>
+      <select class="in" id="lnVar" aria-label="Variance">
+        <option value="all">All variance</option>
+        <option value="short">Short (scanned &lt; system)</option>
+        <option value="excess">Excess (scanned &gt; system)</option>
+        <option value="any">Any variance</option>
+        <option value="zero">No variance</option>
+      </select>
+      <input class="in search" id="lnQ" type="search" placeholder="Search job, location, barcode, user" aria-label="Search job lines">
+      <button class="btn" id="lnReset" type="button">Reset</button>
+      <div class="exbar"><button class="btn ob" id="lnCsv" type="button">CSV</button><button class="btn yb" id="lnXlsx" type="button">Excel</button></div>
     </div>
     <div class="inc-kpis" id="lnKpis">
-      <div class="kpi" style="--k:var(--y)"><span class="lbl">Job lines</span><span class="big" data-k="lines">—</span></div>
-      <div class="kpi" style="--k:var(--b)"><span class="lbl">Jobs</span><span class="big" data-k="jobs">—</span></div>
-      <div class="kpi" style="--k:var(--p)"><span class="lbl">Locations</span><span class="big" data-k="locs">—</span></div>
-      <div class="kpi" style="--k:var(--o)"><span class="lbl">Pending confirmation</span><span class="big" data-k="pc">—</span></div>
-      <div class="kpi" style="--k:var(--g)"><span class="lbl">Closed</span><span class="big" data-k="closed">—</span></div>
+      <div class="kpi" style="--k:var(--y)"><span class="lbl">Job lines</span><span class="big" data-k="lines">—</span><span class="lbl" data-k2="jobs"></span></div>
+      <div class="kpi" style="--k:var(--b)"><span class="lbl">Pending</span><span class="big" data-k="pending">—</span><span class="lbl">not counted yet</span></div>
+      <div class="kpi" style="--k:var(--o)"><span class="lbl">Pending confirmation</span><span class="big" data-k="pc">—</span><span class="lbl">counted, waiting decision</span></div>
+      <div class="kpi" style="--k:var(--g)"><span class="lbl">Closed</span><span class="big" data-k="closed">—</span><span class="lbl">decided</span></div>
+      <div class="kpi" style="--k:var(--r)"><span class="lbl">Short units</span><span class="big" data-k="short">—</span><span class="lbl" data-k2="shortLines"></span></div>
+      <div class="kpi" style="--k:var(--p)"><span class="lbl">Excess units</span><span class="big" data-k="excess">—</span><span class="lbl" data-k2="excessLines"></span></div>
+      <div class="kpi" style="--k:var(--y)"><span class="lbl">Net variance</span><span class="big" data-k="net">—</span><span class="lbl">scanned − system</span></div>
+      <div class="kpi" style="--k:var(--g)"><span class="lbl">Count accuracy</span><span class="big" data-k="acc">—</span><span class="lbl">counted lines with no variance</span></div>
     </div>
-    <div class="tablewrap" style="max-height:none">
-      <table id="lnSum"></table>
+
+    <div class="alarm" id="lnAlarm" hidden></div>
+
+    <div class="lnstack">
+      <div class="panel sub-panel">
+        <div class="ph"><div class="ico" style="--ic:rgba(248,113,113,.14);--icc:var(--r)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></div>
+          <div><h2 class="h">Needs attention · top short barcodes</h2><p class="note">Counted lines (pending confirmation + closed), net scanned − system per barcode. Click a row to filter the lines.</p></div></div>
+        <div class="tablewrap" style="max-height:520px"><table class="vt" id="lnShort"></table></div>
+      </div>
+      <div class="panel sub-panel">
+        <div class="ph"><div class="ico" style="--ic:rgba(167,139,250,.16);--icc:var(--p)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div>
+          <div><h2 class="h">Top excess barcodes</h2><p class="note">More scanned than the system shows: check for mis-located or unreceived stock.</p></div></div>
+        <div class="tablewrap" style="max-height:520px"><table class="vt" id="lnExcess"></table></div>
+      </div>
     </div>
-    <div class="tablewrap">
-      <table id="lnTbl"><thead></thead><tbody></tbody></table>
-    </div>
+
+    <div class="ph"><div><h2 class="h">By warehouse</h2></div></div>
+    <div class="tablewrap" style="max-height:none"><table class="vt" id="lnSum"></table></div>
+
+    <div class="ph"><div><h2 class="h">Job lines</h2></div></div>
+    <div class="tablewrap"><table id="lnTbl"><thead></thead><tbody></tbody></table></div>
     <div class="foot"><span id="lnCount">Loading…</span><button class="btn" id="lnMore" type="button" hidden>Show 200 more</button></div>
   </section>
 </main>
@@ -662,15 +712,19 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
   setHdr();
   let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { setHdr(); if (RAW) { drawArea(); drawDays(); } }, 150); });
 
-  // ---------- stocktake job lines (current month): incident + full stock take, pending confirmation + closed ----------
+  // ---------- stocktake job lines (current month): incident + full stock take; pending, pending confirmation, closed ----------
+  // a barcode is "critical" when the net shortage reaches this many units, "watch" for any smaller shortage
+  const CRITICAL_SHORT_UNITS = 5;
+  const TOP_N = 25;
   const LN_API = SB_URL + '/rest/v1/stocktake_lines_snapshots?id=eq.1&select=';
   const lnNorm = (s) => String(s == null ? '' : s).toLowerCase().replace(/[^a-z]/g, '');
   const lnGroup = (g) => { const n = lnNorm(g); return n.includes('incident') ? 'incident' : n.includes('full') ? 'full' : ''; };
-  const lnStatus = (s) => { const n = lnNorm(s); return n.includes('confirm') ? 'pending_confirmation' : n.startsWith('closed') ? 'closed' : ''; };
-  const LN_GL = { incident: 'Incident', full: 'Full' }, LN_SL = { pending_confirmation: 'Pending confirmation', closed: 'Closed' };
-  // columns shown first when the report has them; any other column follows
+  const lnStatus = (s) => { const n = lnNorm(s); return n.includes('confirm') ? 'pending_confirmation' : n.startsWith('closed') ? 'closed' : n === 'pending' ? 'pending' : ''; };
+  const LN_SL = { pending: 'Pending', pending_confirmation: 'Pending confirmation', closed: 'Closed' };
   const LN_FIRST = ['partner_warehouse_code', 'job_nr', 'jobNr', 'process_type', 'grouping_key', 'job_status', 'warehouse_code', 'zone_code', 'job_location_code', 'username', 'barcode', 'pbarcode_canonical', 'id_partner', 'expiry_date', 'barcode_status', 'scanned_qty', 'system_qty', 'qty_variance', 'job_creation_date', 'job_started_at', 'decided_by', 'user_finished_job_at', 'job_finalized_at'];
-  const ln = { raw: null, at: null, rows: [], cols: [], g: 'all', s: 'all', wh: 'all', q: '', shown: 200 };
+  const num = (v) => { const n = Number(String(v ?? '').replace(/,/g, '')); return isFinite(n) ? n : 0; };
+  const SF = d3.format('+,');
+  const ln = { raw: null, at: null, rows: [], cols: [], g: 'all', s: 'all', wh: 'all', from: '', to: '', pt: 'all', zone: 'all', bs: 'all', vr: 'all', q: '', shown: 200 };
   const curMonth = () => { const d = new Date(); return [iso(new Date(d.getFullYear(), d.getMonth(), 1)), iso(new Date(d.getFullYear(), d.getMonth() + 1, 0))]; };
   function lnBuild() {
     const d = ln.raw; ln.rows = []; ln.cols = [];
@@ -684,36 +738,99 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
       if (!g || !s) continue;
       const day = String(o.job_creation_date || '').slice(0, 10);
       if (day && (day < mFrom || day > mTo)) continue; // a new month starts clean, even before the bookmark runs again
-      ln.rows.push({ o, g, s, wh: o.partner_warehouse_code, job: o.jobNr || o.job_nr, loc: o.job_location_code || o.location_code || '' });
+      const sys = num(o.system_qty), scan = num(o.scanned_qty);
+      const v = o.qty_variance !== undefined && o.qty_variance !== '' ? num(o.qty_variance) : scan - sys;
+      const bc = String(o.pbarcode_canonical || o.barcode || '').trim();
+      ln.rows.push({ o, g, s, day, wh: o.partner_warehouse_code, job: o.job_nr || o.jobNr, loc: o.job_location_code || o.location_code || '', zone: o.zone_code || '', pt: o.process_type || '', bs: o.barcode_status || '', bc, sys, scan, v, counted: s !== 'pending' });
     }
+    // fill the dropdowns from the data
+    const fill = (id, vals, label) => { const sel = $(id); const cur = sel.value; sel.replaceChildren(new Option(label, 'all')); [...new Set(vals)].filter(Boolean).sort().forEach((x) => sel.append(new Option(x, x))); sel.value = [...sel.options].some((o) => o.value === cur) ? cur : 'all'; };
+    const pts = [...new Set(ln.rows.map((r) => r.pt).filter(Boolean))].sort(); if (ln.pt !== 'all' && !pts.includes(ln.pt)) ln.pt = 'all';
+    $('#lnPt').replaceChildren(...['all', ...pts].map((p) => { const b = el('button', 'chip', p === 'all' ? 'All process types' : p); b.type = 'button'; b.dataset.pt = p; return b; }));
+    fill('#lnZone', ln.rows.map((r) => r.zone), 'All zones');
+    fill('#lnBs', ln.rows.map((r) => r.bs), 'All barcode statuses');
   }
-  const lnView = () => { const q = ln.q.trim().toLowerCase(); return ln.rows.filter((r) => (ln.g === 'all' || r.g === ln.g) && (ln.s === 'all' || r.s === ln.s) && (ln.wh === 'all' || r.wh === ln.wh) && (!q || Object.values(r.o).some((v) => String(v).toLowerCase().includes(q)))); };
+  // every filter except the status/grouping chips can be skipped, so summaries can show all statuses side by side
+  const lnBase = (skip) => {
+    const q = ln.q.trim().toLowerCase();
+    return ln.rows.filter((r) => (skip === 'g' || ln.g === 'all' || r.g === ln.g) && (skip === 's' || ln.s === 'all' || r.s === ln.s) && (ln.wh === 'all' || r.wh === ln.wh)
+      && (!ln.from || r.day >= ln.from) && (!ln.to || r.day <= ln.to) && (skip === 'pt' || ln.pt === 'all' || r.pt === ln.pt) && (ln.zone === 'all' || r.zone === ln.zone) && (ln.bs === 'all' || r.bs === ln.bs)
+      && (ln.vr === 'all' || (ln.vr === 'short' ? r.counted && r.v < 0 : ln.vr === 'excess' ? r.counted && r.v > 0 : ln.vr === 'any' ? r.counted && r.v !== 0 : r.counted && r.v === 0))
+      && (!q || Object.values(r.o).some((v) => String(v).toLowerCase().includes(q))));
+  };
+  const lnView = () => lnBase();
+  const lnStats = (rs) => { const c = rs.filter((r) => r.counted); return { lines: rs.length, jobs: new Set(rs.map((r) => r.wh + '|' + r.job)).size, locs: new Set(rs.map((r) => r.wh + '|' + r.loc)).size, pending: rs.filter((r) => r.s === 'pending').length, pc: rs.filter((r) => r.s === 'pending_confirmation').length, closed: rs.filter((r) => r.s === 'closed').length, counted: c.length, short: d3.sum(c, (r) => (r.v < 0 ? -r.v : 0)), excess: d3.sum(c, (r) => (r.v > 0 ? r.v : 0)), net: d3.sum(c, (r) => r.v), shortLines: c.filter((r) => r.v < 0).length, excessLines: c.filter((r) => r.v > 0).length, ok: c.filter((r) => r.v === 0).length }; };
+  // variance per barcode, counted lines only (pending lines are not counted yet, their scanned qty is 0)
+  function lnByBarcode(rs) {
+    const m = new Map();
+    for (const r of rs) {
+      if (!r.counted || !r.bc) continue;
+      let o = m.get(r.bc); if (!o) { o = { bc: r.bc, partner: r.o.id_partner || '', sys: 0, scan: 0, net: 0, short: 0, excess: 0, lines: 0, whs: new Set(), locs: new Set(), jobs: new Set(), last: '', pc: 0 }; m.set(r.bc, o); }
+      o.sys += r.sys; o.scan += r.scan; o.net += r.v; if (r.v < 0) o.short -= r.v; if (r.v > 0) o.excess += r.v; o.lines++;
+      o.whs.add(r.wh); o.locs.add(r.wh + '|' + r.loc); o.jobs.add(r.wh + '|' + r.job); if (r.s === 'pending_confirmation') o.pc++;
+      const t = String(r.o.user_finished_job_at || r.o.job_creation_date || '').slice(0, 16).replace('T', ' '); if (t > o.last) o.last = t;
+    }
+    return [...m.values()];
+  }
+  const lvlOf = (b) => (b.net <= -CRITICAL_SHORT_UNITS ? ['crit', 'Critical'] : b.net < 0 ? ['watch', 'Watch'] : ['info', 'Excess']);
+  function lnVarTable(id, list, empty) {
+    const t = $(id); t.replaceChildren();
+    const hr = el('tr'); [['Alarm', ''], ['Barcode', ''], ['Partner', ''], ['WH', ''], ['Locations', 'num'], ['Lines', 'num'], ['System', 'num'], ['Scanned', 'num'], ['Net', 'num'], ['Short', 'num'], ['Excess', 'num'], ['Last count', '']].forEach(([h, c]) => hr.append(el('th', c, h)));
+    const th = el('thead'); th.append(hr); const tb = el('tbody');
+    if (!list.length) { const tr = el('tr'); const td = el('td', '', empty); td.colSpan = 12; td.style.color = 'var(--muted)'; tr.append(td); tb.append(tr); }
+    list.forEach((b) => {
+      const tr = el('tr', 'click'); tr.dataset.bc = b.bc; tr.title = 'Show the lines for ' + b.bc + (b.pc ? ' · ' + b.pc + ' line(s) still pending confirmation' : '');
+      const [k, l] = lvlOf(b); const c0 = el('td'); c0.append(el('span', 'lvl ' + k, l)); tr.append(c0);
+      tr.append(el('td', 'c-loc', b.bc), el('td', 'c-fam', b.partner), el('td', 'c-wh', [...b.whs].map((w) => w.slice(-2)).join(', ')), el('td', 'num', F(b.locs.size)), el('td', 'num', F(b.lines)), el('td', 'num', F(b.sys)), el('td', 'num', F(b.scan)), el('td', 'num ' + (b.net < 0 ? 'neg' : b.net > 0 ? 'pos' : ''), b.net ? SF(b.net) : '0'), el('td', 'num neg', b.short ? F(b.short) : ''), el('td', 'num pos', b.excess ? F(b.excess) : ''), el('td', 'c-date', b.last));
+      tb.append(tr);
+    });
+    t.append(th, tb);
+  }
   function lnRender() {
     const [mFrom, mTo] = curMonth();
     $('#lnMonth').textContent = new Date(mFrom + 'T00:00:00').toLocaleDateString([], { month: 'long', year: 'numeric' }) + ' (' + mFrom.slice(8) + '–' + mTo.slice(8) + ')';
     $('#lnAt').textContent = ln.at ? when(ln.at) : '—';
+    $('#lnFrom').min = $('#lnTo').min = mFrom; $('#lnFrom').max = $('#lnTo').max = mTo;
     document.querySelectorAll('#lnGrp [data-g]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.g === ln.g)));
+    { const base = lnBase('pt'); const cnt = d3.rollup(base, (v) => v.length, (r) => r.pt); document.querySelectorAll('#lnPt [data-pt]').forEach((b) => { b.setAttribute('aria-pressed', String(b.dataset.pt === ln.pt)); let n = b.querySelector('.n'); if (!n) { n = el('span', 'n'); b.append(n); } n.textContent = F(b.dataset.pt === 'all' ? base.length : cnt.get(b.dataset.pt) || 0); }); }
     document.querySelectorAll('#lnSt [data-s]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.s === ln.s)));
     const sel = $('#lnWh'); if (sel.options.length === 1) WAREHOUSES.forEach((w) => sel.append(new Option(w, w)));
-    const v = lnView();
-    const k = { lines: v.length, jobs: new Set(v.map((r) => r.wh + '|' + r.job)).size, locs: new Set(v.map((r) => r.wh + '|' + r.loc)).size, pc: v.filter((r) => r.s === 'pending_confirmation').length, closed: v.filter((r) => r.s === 'closed').length };
-    document.querySelectorAll('#lnKpis [data-k]').forEach((e) => { e.textContent = ln.raw ? F(k[e.dataset.k]) : '—'; });
-    // summary: warehouse x grouping x status (ignores the grouping/status chips so the whole month is visible)
-    const base = ln.rows.filter((r) => ln.wh === 'all' || r.wh === ln.wh);
-    const combos = [['incident', 'pending_confirmation'], ['incident', 'closed'], ['full', 'pending_confirmation'], ['full', 'closed']];
-    const sum = $('#lnSum'); sum.replaceChildren();
-    const hr = el('tr'); hr.append(el('th', '', 'Warehouse')); combos.forEach(([g, s]) => hr.append(el('th', 'num', LN_GL[g] + ' · ' + LN_SL[s]))); hr.append(el('th', 'num', 'Total'));
+    const ex = [];
+    if (ln.from || ln.to) ex.push('created ' + (ln.from || mFrom) + ' → ' + (ln.to || mTo)); if (ln.pt !== 'all') ex.push(ln.pt); if (ln.zone !== 'all') ex.push('zone ' + ln.zone); if (ln.bs !== 'all') ex.push(ln.bs); if (ln.vr !== 'all') ex.push($('#lnVar').selectedOptions[0].text.toLowerCase()); if (ln.q.trim()) ex.push('search "' + ln.q.trim() + '"');
+    $('#lnFlt').textContent = ex.length ? 'Filtered: ' + ex.join(' · ') : '';
+    const v = lnView(); const k = lnStats(v); const P = d3.format('.1%');
+    const kv = { lines: F(k.lines), pending: F(k.pending), pc: F(k.pc), closed: F(k.closed), short: k.short ? '−' + F(k.short) : '0', excess: k.excess ? '+' + F(k.excess) : '0', net: k.net ? SF(k.net) : '0', acc: k.counted ? P(k.ok / k.counted) : '—' };
+    document.querySelectorAll('#lnKpis [data-k]').forEach((e) => { e.textContent = ln.raw ? kv[e.dataset.k] : '—'; });
+    const k2 = { jobs: F(k.jobs) + ' jobs · ' + F(k.locs) + ' locations', shortLines: F(k.shortLines) + ' lines short', excessLines: F(k.excessLines) + ' lines excess' };
+    document.querySelectorAll('#lnKpis [data-k2]').forEach((e) => { e.textContent = ln.raw ? k2[e.dataset.k2] : ''; });
+    // barcode variance (follows every filter, statuses limited to counted ones)
+    const bcs = lnByBarcode(v);
+    const shorts = bcs.filter((b) => b.net < 0).sort((a, b) => a.net - b.net || b.locs.size - a.locs.size);
+    const excess = bcs.filter((b) => b.net > 0).sort((a, b) => b.net - a.net);
+    lnVarTable('#lnShort', shorts.slice(0, TOP_N), ln.raw ? 'No short barcodes for these filters.' : 'No data yet.');
+    lnVarTable('#lnExcess', excess.slice(0, TOP_N), ln.raw ? 'No excess barcodes for these filters.' : 'No data yet.');
+    const crit = shorts.filter((b) => b.net <= -CRITICAL_SHORT_UNITS);
+    const al = $('#lnAlarm'); al.hidden = !crit.length; al.replaceChildren();
+    if (crit.length) {
+      const body = el('div'); const p1 = el('div'); p1.append(el('b', '', F(crit.length) + ' barcode' + (crit.length > 1 ? 's are' : ' is') + ' short by ' + CRITICAL_SHORT_UNITS + '+ units'), ' · ' + F(d3.sum(crit, (b) => -b.net)) + ' units missing in total. Check these locations before closing the jobs.');
+      const tags = el('div', 'tags'); crit.slice(0, 12).forEach((b) => { const x = el('button', '', b.bc + '  ' + SF(b.net)); x.type = 'button'; x.dataset.bc = b.bc; tags.append(x); });
+      body.append(p1, tags); al.append(el('span', 'ttl', '⚠ Needs attention'), body);
+    }
+    // by warehouse: all statuses side by side (status chip ignored here)
+    const base = lnBase('s'); const sum = $('#lnSum'); sum.replaceChildren();
+    const hr = el('tr'); [['Warehouse', ''], ['Pending', 'num'], ['Pending conf.', 'num'], ['Closed', 'num'], ['Lines', 'num'], ['Jobs', 'num'], ['Locations', 'num'], ['Short units', 'num'], ['Excess units', 'num'], ['Net', 'num'], ['Accuracy', 'num'], ['Short barcodes', 'num']].forEach(([h, c]) => hr.append(el('th', c, h)));
     const th = el('thead'); th.append(hr); const tb = el('tbody');
     const whs = ln.wh === 'all' ? WAREHOUSES : [ln.wh];
     [...whs, ...(whs.length > 1 ? ['Total'] : [])].forEach((w) => {
-      const rs = w === 'Total' ? base : base.filter((r) => r.wh === w); const tr = el('tr'); tr.append(el('td', 'c-wh', w));
-      combos.forEach(([g, s]) => tr.append(el('td', 'num', F(rs.filter((r) => r.g === g && r.s === s).length)))); tr.append(el('td', 'num', F(rs.length))); tb.append(tr);
+      const rs = w === 'Total' ? base : base.filter((r) => r.wh === w); const s = lnStats(rs); const nb = lnByBarcode(rs).filter((b) => b.net < 0).length;
+      const tr = el('tr', w === 'Total' ? 'tot' : ''); tr.append(el('td', 'c-wh', w), el('td', 'num', F(s.pending)), el('td', 'num', F(s.pc)), el('td', 'num', F(s.closed)), el('td', 'num', F(s.lines)), el('td', 'num', F(s.jobs)), el('td', 'num', F(s.locs)), el('td', 'num neg', s.short ? '−' + F(s.short) : '0'), el('td', 'num pos', s.excess ? '+' + F(s.excess) : '0'), el('td', 'num ' + (s.net < 0 ? 'neg' : s.net > 0 ? 'pos' : ''), s.net ? SF(s.net) : '0'), el('td', 'num', s.counted ? P(s.ok / s.counted) : '—'), el('td', 'num ' + (nb ? 'neg' : ''), F(nb)));
+      tb.append(tr);
     });
     sum.append(th, tb);
     // lines table
     const t = $('#lnTbl'); const h = el('tr'); ln.cols.forEach((c) => h.append(el('th', '', c))); t.tHead.replaceChildren(h);
     const frag = document.createDocumentFragment();
-    v.slice(0, ln.shown).forEach((r) => { const tr = el('tr'); ln.cols.forEach((c) => { const cls = c === 'partner_warehouse_code' ? 'c-wh' : /status/.test(c) ? (r.s === 'closed' ? 'c-date' : 'c-date o') : /date|_at$/.test(c) ? 'c-date' : /loc|jobNr|sku|barcode/i.test(c) ? 'c-loc' : ''; tr.append(el('td', cls, r.o[c] ?? '')); }); frag.append(tr); });
+    v.slice(0, ln.shown).forEach((r) => { const tr = el('tr'); ln.cols.forEach((c) => { const cls = c === 'partner_warehouse_code' ? 'c-wh' : c === 'job_status' ? (r.s === 'closed' ? 'c-date' : r.s === 'pending' ? 'c-date r' : 'c-date o') : c === 'qty_variance' ? 'num ' + (r.counted && r.v < 0 ? 'neg' : r.counted && r.v > 0 ? 'pos' : '') : /_qty$/.test(c) ? 'num' : /date|_at$/.test(c) ? 'c-date' : /loc|job_?nr|barcode|zone/i.test(c) ? 'c-loc' : ''; tr.append(el('td', cls, r.o[c] ?? '')); }); frag.append(tr); });
     t.tBodies[0].replaceChildren(frag);
     $('#lnCount').textContent = ln.raw ? (v.length ? `Showing ${F(Math.min(ln.shown, v.length))} of ${F(v.length)} job lines` : 'No job lines match these filters.') : 'No job lines yet. Run the Refresh Job Lines bookmark on grocery-tools.noon.team.';
     $('#lnMore').hidden = v.length <= ln.shown;
@@ -741,19 +858,37 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
     } catch (e) { $('#lnCount').textContent = 'Could not load job lines. ' + e.message; }
   }
   const lnOut = () => lnView().map((r) => Object.fromEntries(ln.cols.map((c) => [c, r.o[c] ?? ''])));
+  const bcOut = (list) => list.map((b) => ({ Alarm: lvlOf(b)[1], Barcode: b.bc, Partner: b.partner, Warehouses: [...b.whs].join(', '), Locations: b.locs.size, Jobs: b.jobs.size, Lines: b.lines, 'System qty': b.sys, 'Scanned qty': b.scan, 'Net variance': b.net, 'Short units': b.short, 'Excess units': b.excess, 'Lines pending confirmation': b.pc, 'Last count': b.last }));
   const lnFile = () => `StockTake_lines_${curMonth()[0].slice(0, 7)}_${ln.wh === 'all' ? 'All' : ln.wh}_${stamp()}`;
   $('#lnCsv').addEventListener('click', () => { const rows = lnOut(); if (!rows.length) { alert('No job lines match these filters.'); return; } download(new Blob([toCSV(rows)], { type: 'text/csv;charset=utf-8' }), lnFile() + '.csv'); });
   $('#lnXlsx').addEventListener('click', () => {
     const rows = lnOut(); if (!rows.length) { alert('No job lines match these filters.'); return; }
     if (!window.XLSX) { alert('Excel export could not load. Check your connection and try again.'); return; }
-    const wb = XLSX.utils.book_new(); const ws = XLSX.utils.json_to_sheet(rows);
-    ws['!cols'] = ln.cols.map((c) => ({ wch: Math.min(40, Math.max(c.length + 2, ...rows.slice(0, 300).map((r) => String(r[c]).length + 1))) }));
-    XLSX.utils.book_append_sheet(wb, ws, 'Job lines'); XLSX.writeFile(wb, lnFile() + '.xlsx');
+    const wb = XLSX.utils.book_new();
+    const add = (name, rs) => { const ws = XLSX.utils.json_to_sheet(rs.length ? rs : [{ Note: 'No rows' }]); const cols = Object.keys(rs[0] || { Note: '' }); ws['!cols'] = cols.map((c) => ({ wch: Math.min(40, Math.max(c.length + 2, ...rs.slice(0, 300).map((r) => String(r[c] ?? '').length + 1))) })); XLSX.utils.book_append_sheet(wb, ws, name); };
+    const bcs = lnByBarcode(lnView());
+    add('Short barcodes', bcOut(bcs.filter((b) => b.net < 0).sort((a, b) => a.net - b.net)));
+    add('Excess barcodes', bcOut(bcs.filter((b) => b.net > 0).sort((a, b) => b.net - a.net)));
+    const base = lnBase('s'); const whs = ln.wh === 'all' ? WAREHOUSES : [ln.wh];
+    add('By warehouse', [...whs, ...(whs.length > 1 ? ['Total'] : [])].map((w) => { const s = lnStats(w === 'Total' ? base : base.filter((r) => r.wh === w)); return { Warehouse: w, Pending: s.pending, 'Pending confirmation': s.pc, Closed: s.closed, Lines: s.lines, Jobs: s.jobs, Locations: s.locs, 'Short units': s.short, 'Excess units': s.excess, 'Net variance': s.net, 'Accuracy %': s.counted ? Math.round(1000 * s.ok / s.counted) / 10 : '' }; }));
+    add('Job lines', rows);
+    XLSX.writeFile(wb, lnFile() + '.xlsx');
   });
-  $('#lnGrp').addEventListener('click', (e) => { const b = e.target.closest('[data-g]'); if (b) { ln.g = b.dataset.g; ln.shown = 200; lnRender(); } });
-  $('#lnSt').addEventListener('click', (e) => { const b = e.target.closest('[data-s]'); if (b) { ln.s = b.dataset.s; ln.shown = 200; lnRender(); } });
-  $('#lnWh').addEventListener('change', (e) => { ln.wh = e.target.value; ln.shown = 200; lnRender(); });
-  let lqt; $('#lnQ').addEventListener('input', (e) => { clearTimeout(lqt); lqt = setTimeout(() => { ln.q = e.target.value; ln.shown = 200; lnRender(); }, 200); });
+  const lnSet = (patch) => { Object.assign(ln, patch, { shown: 200 }); lnRender(); };
+  $('#lnGrp').addEventListener('click', (e) => { const b = e.target.closest('[data-g]'); if (b) lnSet({ g: b.dataset.g }); });
+  $('#lnSt').addEventListener('click', (e) => { const b = e.target.closest('[data-s]'); if (b) lnSet({ s: b.dataset.s }); });
+  $('#lnWh').addEventListener('change', (e) => lnSet({ wh: e.target.value }));
+  $('#lnPt').addEventListener('click', (e) => { const b = e.target.closest('[data-pt]'); if (b) lnSet({ pt: b.dataset.pt }); });
+  $('#lnZone').addEventListener('change', (e) => lnSet({ zone: e.target.value }));
+  $('#lnBs').addEventListener('change', (e) => lnSet({ bs: e.target.value }));
+  $('#lnVar').addEventListener('change', (e) => lnSet({ vr: e.target.value }));
+  $('#lnFrom').addEventListener('change', (e) => { let f = e.target.value, t = ln.to; if (f && t && f > t) [f, t] = [t, f]; $('#lnFrom').value = f; $('#lnTo').value = t; lnSet({ from: f, to: t }); });
+  $('#lnTo').addEventListener('change', (e) => { let f = ln.from, t = e.target.value; if (f && t && f > t) [f, t] = [t, f]; $('#lnFrom').value = f; $('#lnTo').value = t; lnSet({ from: f, to: t }); });
+  let lqt; $('#lnQ').addEventListener('input', (e) => { clearTimeout(lqt); lqt = setTimeout(() => lnSet({ q: e.target.value }), 200); });
+  const lnPick = (bc) => { $('#lnQ').value = bc; lnSet({ q: bc }); $('#lnTbl').scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+  ['#lnShort', '#lnExcess'].forEach((id) => $(id).addEventListener('click', (e) => { const tr = e.target.closest('tr[data-bc]'); if (tr) lnPick(tr.dataset.bc); }));
+  $('#lnAlarm').addEventListener('click', (e) => { const b = e.target.closest('button[data-bc]'); if (b) lnPick(b.dataset.bc); });
+  $('#lnReset').addEventListener('click', () => { Object.assign(ln, { g: 'all', s: 'all', wh: 'all', from: '', to: '', pt: 'all', zone: 'all', bs: 'all', vr: 'all', q: '', shown: 200 }); ['#lnWh', '#lnZone', '#lnBs', '#lnVar'].forEach((id) => { $(id).value = 'all'; }); $('#lnFrom').value = $('#lnTo').value = $('#lnQ').value = ''; lnRender(); });
   $('#lnMore').addEventListener('click', () => { ln.shown += 200; lnRender(); });
   $('#refresh').addEventListener('click', () => lnLoad(true));
 
