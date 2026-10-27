@@ -669,7 +669,7 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
   const lnStatus = (s) => { const n = lnNorm(s); return n.includes('confirm') ? 'pending_confirmation' : n.startsWith('closed') ? 'closed' : ''; };
   const LN_GL = { incident: 'Incident', full: 'Full' }, LN_SL = { pending_confirmation: 'Pending confirmation', closed: 'Closed' };
   // columns shown first when the report has them; any other column follows
-  const LN_FIRST = ['partner_warehouse_code', 'jobNr', 'grouping_key', 'job_status', 'line_status', 'job_location_code', 'location_code', 'sku', 'pbarcode', 'title', 'qty_expected', 'qty_counted', 'qty_diff', 'job_creation_date', 'user_finished_job_at', 'job_finalized_at', 'username'];
+  const LN_FIRST = ['partner_warehouse_code', 'jobNr', 'job_nr', 'process_type', 'grouping_key', 'job_status', 'line_status', 'job_location_code', 'location_code', 'sku', 'pbarcode', 'title', 'qty_expected', 'qty_counted', 'qty_diff', 'job_creation_date', 'user_finished_job_at', 'job_finalized_at', 'username'];
   const ln = { raw: null, at: null, rows: [], cols: [], g: 'all', s: 'all', wh: 'all', q: '', shown: 200 };
   const curMonth = () => { const d = new Date(); return [iso(new Date(d.getFullYear(), d.getMonth(), 1)), iso(new Date(d.getFullYear(), d.getMonth() + 1, 0))]; };
   function lnBuild() {
@@ -684,7 +684,7 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
       if (!g || !s) continue;
       const day = String(o.job_creation_date || '').slice(0, 10);
       if (day && (day < mFrom || day > mTo)) continue; // a new month starts clean, even before the bookmark runs again
-      ln.rows.push({ o, g, s, wh: o.partner_warehouse_code, job: o.jobNr, loc: o.job_location_code || o.location_code || '' });
+      ln.rows.push({ o, g, s, wh: o.partner_warehouse_code, job: o.jobNr || o.job_nr, loc: o.job_location_code || o.location_code || '' });
     }
   }
   const lnView = () => { const q = ln.q.trim().toLowerCase(); return ln.rows.filter((r) => (ln.g === 'all' || r.g === ln.g) && (ln.s === 'all' || r.s === ln.s) && (ln.wh === 'all' || r.wh === ln.wh) && (!q || Object.values(r.o).some((v) => String(v).toLowerCase().includes(q)))); };
