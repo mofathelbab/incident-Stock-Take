@@ -179,6 +179,8 @@ details.setup{background:var(--panel);border:1px solid var(--line);border-radius
 details.setup summary{cursor:pointer;color:var(--fg);font-weight:700}
 details.setup ol{margin:10px 0 4px;padding-left:20px;display:grid;gap:6px}
 .bmk{display:inline-block;background:var(--y);color:var(--yink);font-weight:800;padding:7px 12px;border-radius:999px;text-decoration:none;cursor:grab}
+#lnSum th,#lnTbl th{padding:10px 12px;text-align:left;white-space:nowrap}
+#lnSum th.num{text-align:right}
 </style>
 </head>
 <body>
@@ -196,7 +198,7 @@ details.setup ol{margin:10px 0 4px;padding-left:20px;display:grid;gap:6px}
     </div>
   </div>
   <nav class="nav" aria-label="Sections">
-    <a href="#warehouses">Overview</a><a href="#aging">Aging</a><a href="#areas">Areas</a><a href="#daily">By day</a><a href="#jobsec">Jobs</a>
+    <a href="#warehouses">Overview</a><a href="#aging">Aging</a><a href="#areas">Areas</a><a href="#daily">By day</a><a href="#jobsec">Jobs</a><a href="#linesec">Job lines (month)</a>
   </nav>
 </header>
 
@@ -305,6 +307,46 @@ details.setup ol{margin:10px 0 4px;padding-left:20px;display:grid;gap:6px}
       </table>
     </div>
     <div class="foot"><span id="count"></span><button class="btn" id="more" type="button" hidden>Show 200 more</button></div>
+  </section>
+
+  <section class="panel" id="linesec">
+    <div class="ph">
+      <div class="ico" style="--ic:rgba(255,229,0,.14);--icc:var(--y)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg></div>
+      <div><h2 class="h">Stocktake job lines · <span id="lnMonth" class="y">this month</span></h2>
+      <p class="note">Incident and full stock take, pending confirmation and closed, from the Stocktake Job Lines report. Updated <b id="lnAt">—</b> by the Refresh Job Lines bookmark.</p></div>
+    </div>
+    <div class="inc-top">
+      <div class="chips" id="lnGrp" role="group" aria-label="Grouping key">
+        <button class="chip" type="button" data-g="all" aria-pressed="true">All groupings</button>
+        <button class="chip" type="button" data-g="incident" aria-pressed="false">Incident stock take</button>
+        <button class="chip" type="button" data-g="full" aria-pressed="false">Full stock take</button>
+      </div>
+      <div class="chips" id="lnSt" role="group" aria-label="Status">
+        <button class="chip" type="button" data-s="all" aria-pressed="true">All statuses</button>
+        <button class="chip" type="button" data-s="pending_confirmation" aria-pressed="false">Pending confirmation</button>
+        <button class="chip" type="button" data-s="closed" aria-pressed="false">Closed</button>
+      </div>
+      <select class="in" id="lnWh" aria-label="Warehouse"><option value="all">All warehouses</option></select>
+      <input class="in search" id="lnQ" type="search" placeholder="Search job, location, SKU, user" aria-label="Search job lines">
+      <div class="exbar">
+        <button class="btn ob" id="lnCsv" type="button">CSV</button>
+        <button class="btn yb" id="lnXlsx" type="button">Excel</button>
+      </div>
+    </div>
+    <div class="inc-kpis" id="lnKpis">
+      <div class="kpi" style="--k:var(--y)"><span class="lbl">Job lines</span><span class="big" data-k="lines">—</span></div>
+      <div class="kpi" style="--k:var(--b)"><span class="lbl">Jobs</span><span class="big" data-k="jobs">—</span></div>
+      <div class="kpi" style="--k:var(--p)"><span class="lbl">Locations</span><span class="big" data-k="locs">—</span></div>
+      <div class="kpi" style="--k:var(--o)"><span class="lbl">Pending confirmation</span><span class="big" data-k="pc">—</span></div>
+      <div class="kpi" style="--k:var(--g)"><span class="lbl">Closed</span><span class="big" data-k="closed">—</span></div>
+    </div>
+    <div class="tablewrap" style="max-height:none">
+      <table id="lnSum"></table>
+    </div>
+    <div class="tablewrap">
+      <table id="lnTbl"><thead></thead><tbody></tbody></table>
+    </div>
+    <div class="foot"><span id="lnCount">Loading…</span><button class="btn" id="lnMore" type="button" hidden>Show 200 more</button></div>
   </section>
 </main>
 
@@ -620,9 +662,91 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
   setHdr();
   let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { setHdr(); if (RAW) { drawArea(); drawDays(); } }, 150); });
 
-  load(true);
-  setInterval(() => { if (!document.hidden) load(false); }, CHECK_EVERY_SECONDS * 1000);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && RAW) load(false); });
+  // ---------- stocktake job lines (current month): incident + full stock take, pending confirmation + closed ----------
+  const LN_API = SB_URL + '/rest/v1/stocktake_lines_snapshots?id=eq.1&select=';
+  const lnNorm = (s) => String(s == null ? '' : s).toLowerCase().replace(/[^a-z]/g, '');
+  const lnGroup = (g) => { const n = lnNorm(g); return n.includes('incident') ? 'incident' : n.includes('full') ? 'full' : ''; };
+  const lnStatus = (s) => { const n = lnNorm(s); return n.includes('confirm') ? 'pending_confirmation' : n === 'closed' ? 'closed' : ''; };
+  const LN_GL = { incident: 'Incident', full: 'Full' }, LN_SL = { pending_confirmation: 'Pending confirmation', closed: 'Closed' };
+  // columns shown first when the report has them; any other column follows
+  const LN_FIRST = ['partner_warehouse_code', 'jobNr', 'grouping_key', 'job_status', 'line_status', 'job_location_code', 'location_code', 'sku', 'pbarcode', 'title', 'qty_expected', 'qty_counted', 'qty_diff', 'job_creation_date', 'user_finished_job_at', 'job_finalized_at', 'username'];
+  const ln = { raw: null, at: null, rows: [], cols: [], g: 'all', s: 'all', wh: 'all', q: '', shown: 200 };
+  const curMonth = () => { const d = new Date(); return [iso(new Date(d.getFullYear(), d.getMonth(), 1)), iso(new Date(d.getFullYear(), d.getMonth() + 1, 0))]; };
+  function lnBuild() {
+    const d = ln.raw; ln.rows = []; ln.cols = [];
+    if (!d) return;
+    const [mFrom, mTo] = curMonth();
+    const ix = Object.fromEntries(d.cols.map((c, i) => [c, i]));
+    ln.cols = [...LN_FIRST.filter((c) => c in ix), ...d.cols.filter((c) => !LN_FIRST.includes(c))];
+    for (const a of d.rows) {
+      const o = Object.fromEntries(d.cols.map((c, i) => [c, a[i]]));
+      const g = lnGroup(o.grouping_key), s = lnStatus(o.job_status != null && o.job_status !== '' ? o.job_status : o.status);
+      if (!g || !s) continue;
+      const day = String(o.job_creation_date || '').slice(0, 10);
+      if (day && (day < mFrom || day > mTo)) continue; // a new month starts clean, even before the bookmark runs again
+      ln.rows.push({ o, g, s, wh: o.partner_warehouse_code, job: o.jobNr, loc: o.job_location_code || o.location_code || '' });
+    }
+  }
+  const lnView = () => { const q = ln.q.trim().toLowerCase(); return ln.rows.filter((r) => (ln.g === 'all' || r.g === ln.g) && (ln.s === 'all' || r.s === ln.s) && (ln.wh === 'all' || r.wh === ln.wh) && (!q || Object.values(r.o).some((v) => String(v).toLowerCase().includes(q)))); };
+  function lnRender() {
+    const [mFrom, mTo] = curMonth();
+    $('#lnMonth').textContent = new Date(mFrom + 'T00:00:00').toLocaleDateString([], { month: 'long', year: 'numeric' }) + ' (' + mFrom.slice(8) + '–' + mTo.slice(8) + ')';
+    $('#lnAt').textContent = ln.at ? when(ln.at) : '—';
+    document.querySelectorAll('#lnGrp [data-g]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.g === ln.g)));
+    document.querySelectorAll('#lnSt [data-s]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.s === ln.s)));
+    const sel = $('#lnWh'); if (sel.options.length === 1) WAREHOUSES.forEach((w) => sel.append(new Option(w, w)));
+    const v = lnView();
+    const k = { lines: v.length, jobs: new Set(v.map((r) => r.wh + '|' + r.job)).size, locs: new Set(v.map((r) => r.wh + '|' + r.loc)).size, pc: v.filter((r) => r.s === 'pending_confirmation').length, closed: v.filter((r) => r.s === 'closed').length };
+    document.querySelectorAll('#lnKpis [data-k]').forEach((e) => { e.textContent = ln.raw ? F(k[e.dataset.k]) : '—'; });
+    // summary: warehouse x grouping x status (ignores the grouping/status chips so the whole month is visible)
+    const base = ln.rows.filter((r) => ln.wh === 'all' || r.wh === ln.wh);
+    const combos = [['incident', 'pending_confirmation'], ['incident', 'closed'], ['full', 'pending_confirmation'], ['full', 'closed']];
+    const sum = $('#lnSum'); sum.replaceChildren();
+    const hr = el('tr'); hr.append(el('th', '', 'Warehouse')); combos.forEach(([g, s]) => hr.append(el('th', 'num', LN_GL[g] + ' · ' + LN_SL[s]))); hr.append(el('th', 'num', 'Total'));
+    const th = el('thead'); th.append(hr); const tb = el('tbody');
+    const whs = ln.wh === 'all' ? WAREHOUSES : [ln.wh];
+    [...whs, ...(whs.length > 1 ? ['Total'] : [])].forEach((w) => {
+      const rs = w === 'Total' ? base : base.filter((r) => r.wh === w); const tr = el('tr'); tr.append(el('td', 'c-wh', w));
+      combos.forEach(([g, s]) => tr.append(el('td', 'num', F(rs.filter((r) => r.g === g && r.s === s).length)))); tr.append(el('td', 'num', F(rs.length))); tb.append(tr);
+    });
+    sum.append(th, tb);
+    // lines table
+    const t = $('#lnTbl'); const h = el('tr'); ln.cols.forEach((c) => h.append(el('th', '', c))); t.tHead.replaceChildren(h);
+    const frag = document.createDocumentFragment();
+    v.slice(0, ln.shown).forEach((r) => { const tr = el('tr'); ln.cols.forEach((c) => { const cls = c === 'partner_warehouse_code' ? 'c-wh' : /status/.test(c) ? (r.s === 'closed' ? 'c-date' : 'c-date o') : /date|_at$/.test(c) ? 'c-date' : /loc|jobNr|sku|barcode/i.test(c) ? 'c-loc' : ''; tr.append(el('td', cls, r.o[c] ?? '')); }); frag.append(tr); });
+    t.tBodies[0].replaceChildren(frag);
+    $('#lnCount').textContent = ln.raw ? (v.length ? `Showing ${F(Math.min(ln.shown, v.length))} of ${F(v.length)} job lines` : 'No job lines match these filters.') : 'No job lines yet. Run the Refresh Job Lines bookmark on grocery-tools.noon.team.';
+    $('#lnMore').hidden = v.length <= ln.shown;
+  }
+  async function lnLoad(force) {
+    try {
+      if (ln.raw && !force) { const r = await fetch(LN_API + 'updated_at', { headers: H, cache: 'no-store' }); if (r.ok) { const j = await r.json(); if (j[0] && j[0].updated_at === ln.at) { lnBuild(); lnRender(); return; } } }
+      const r = await fetch(LN_API + 'updated_at,cols,rows', { headers: H, cache: 'no-store' });
+      if (!r.ok) { $('#lnCount').textContent = 'Job lines not set up yet (run stocktake_lines_setup.sql in Supabase).'; return; }
+      const j = await r.json(); ln.raw = j[0] || null; ln.at = ln.raw ? ln.raw.updated_at : null;
+      lnBuild(); lnRender();
+    } catch (e) { $('#lnCount').textContent = 'Could not load job lines. ' + e.message; }
+  }
+  const lnOut = () => lnView().map((r) => Object.fromEntries(ln.cols.map((c) => [c, r.o[c] ?? ''])));
+  const lnFile = () => `StockTake_lines_${curMonth()[0].slice(0, 7)}_${ln.wh === 'all' ? 'All' : ln.wh}_${stamp()}`;
+  $('#lnCsv').addEventListener('click', () => { const rows = lnOut(); if (!rows.length) { alert('No job lines match these filters.'); return; } download(new Blob([toCSV(rows)], { type: 'text/csv;charset=utf-8' }), lnFile() + '.csv'); });
+  $('#lnXlsx').addEventListener('click', () => {
+    const rows = lnOut(); if (!rows.length) { alert('No job lines match these filters.'); return; }
+    if (!window.XLSX) { alert('Excel export could not load. Check your connection and try again.'); return; }
+    const wb = XLSX.utils.book_new(); const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = ln.cols.map((c) => ({ wch: Math.min(40, Math.max(c.length + 2, ...rows.slice(0, 300).map((r) => String(r[c]).length + 1))) }));
+    XLSX.utils.book_append_sheet(wb, ws, 'Job lines'); XLSX.writeFile(wb, lnFile() + '.xlsx');
+  });
+  $('#lnGrp').addEventListener('click', (e) => { const b = e.target.closest('[data-g]'); if (b) { ln.g = b.dataset.g; ln.shown = 200; lnRender(); } });
+  $('#lnSt').addEventListener('click', (e) => { const b = e.target.closest('[data-s]'); if (b) { ln.s = b.dataset.s; ln.shown = 200; lnRender(); } });
+  $('#lnWh').addEventListener('change', (e) => { ln.wh = e.target.value; ln.shown = 200; lnRender(); });
+  let lqt; $('#lnQ').addEventListener('input', (e) => { clearTimeout(lqt); lqt = setTimeout(() => { ln.q = e.target.value; ln.shown = 200; lnRender(); }, 200); });
+  $('#lnMore').addEventListener('click', () => { ln.shown += 200; lnRender(); });
+  $('#refresh').addEventListener('click', () => lnLoad(true));
+
+  load(true); lnLoad(true);
+  setInterval(() => { if (!document.hidden) { load(false); lnLoad(false); } }, CHECK_EVERY_SECONDS * 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && RAW) load(false); if (!document.hidden) lnLoad(false); });
 })();
 </script>
 </body>
