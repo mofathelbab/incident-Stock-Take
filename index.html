@@ -669,7 +669,7 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
   const lnStatus = (s) => { const n = lnNorm(s); return n.includes('confirm') ? 'pending_confirmation' : n.startsWith('closed') ? 'closed' : ''; };
   const LN_GL = { incident: 'Incident', full: 'Full' }, LN_SL = { pending_confirmation: 'Pending confirmation', closed: 'Closed' };
   // columns shown first when the report has them; any other column follows
-  const LN_FIRST = ['partner_warehouse_code', 'jobNr', 'job_nr', 'process_type', 'grouping_key', 'job_status', 'line_status', 'job_location_code', 'location_code', 'sku', 'pbarcode', 'title', 'qty_expected', 'qty_counted', 'qty_diff', 'job_creation_date', 'user_finished_job_at', 'job_finalized_at', 'username'];
+  const LN_FIRST = ['partner_warehouse_code', 'job_nr', 'jobNr', 'process_type', 'grouping_key', 'job_status', 'warehouse_code', 'zone_code', 'job_location_code', 'username', 'barcode', 'pbarcode_canonical', 'id_partner', 'expiry_date', 'barcode_status', 'scanned_qty', 'system_qty', 'qty_variance', 'job_creation_date', 'job_started_at', 'decided_by', 'user_finished_job_at', 'job_finalized_at'];
   const ln = { raw: null, at: null, rows: [], cols: [], g: 'all', s: 'all', wh: 'all', q: '', shown: 200 };
   const curMonth = () => { const d = new Date(); return [iso(new Date(d.getFullYear(), d.getMonth(), 1)), iso(new Date(d.getFullYear(), d.getMonth() + 1, 0))]; };
   function lnBuild() {
@@ -721,9 +721,22 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
   async function lnLoad(force) {
     try {
       if (ln.raw && !force) { const r = await fetch(LN_API + 'updated_at', { headers: H, cache: 'no-store' }); if (r.ok) { const j = await r.json(); if (j[0] && j[0].updated_at === ln.at) { lnBuild(); lnRender(); return; } } }
-      const r = await fetch(LN_API + 'updated_at,cols,rows', { headers: H, cache: 'no-store' });
-      if (!r.ok) { $('#lnCount').textContent = 'Job lines not set up yet (run stocktake_lines_setup.sql in Supabase).'; return; }
-      const j = await r.json(); ln.raw = j[0] || null; ln.at = ln.raw ? ln.raw.updated_at : null;
+      const r = await fetch(LN_API + 'updated_at,batch,parts', { headers: H, cache: 'no-store' });
+      if (!r.ok) { $('#lnCount').textContent = 'Job lines not set up yet (run stocktake_lines_v2.sql in Supabase).'; return; }
+      const m = (await r.json())[0];
+      if (!m) { ln.raw = null; ln.at = null; lnBuild(); lnRender(); return; }
+      let data = null;
+      if (m.batch) {
+        // the bookmark saves the lines in parts of 4,000 rows
+        const r2 = await fetch(SB_URL + '/rest/v1/stocktake_lines_parts?batch=eq.' + encodeURIComponent(m.batch) + '&select=part,cols,rows&order=part', { headers: H, cache: 'no-store' });
+        if (!r2.ok) throw new Error('Supabase answered ' + r2.status);
+        const parts = await r2.json(); if (parts.length !== m.parts) return; // a newer save replaced this one mid-read; the next check picks it up
+        data = { cols: parts[0] ? parts[0].cols : [], rows: parts.flatMap((p) => p.rows) };
+      } else {
+        const r3 = await fetch(LN_API + 'cols,rows', { headers: H, cache: 'no-store' }); const o = (await r3.json())[0];
+        data = o && o.cols ? { cols: o.cols, rows: o.rows || [] } : null;
+      }
+      ln.raw = data; ln.at = m.updated_at;
       lnBuild(); lnRender();
     } catch (e) { $('#lnCount').textContent = 'Could not load job lines. ' + e.message; }
   }
