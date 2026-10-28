@@ -219,7 +219,8 @@ details.setup ol{margin:10px 0 4px;padding-left:20px;display:grid;gap:6px}
     </div>
     <div class="top-r">
       <span class="pill live" id="live"><span class="dot"></span><span id="liveTxt">Loading</span></span>
-      <span class="pill">Updated <b id="loadedAt">—</b></span>
+      <span class="pill" title="Pending incident jobs: Refresh Stock Take bookmark">Pending jobs <b id="loadedAt">—</b></span>
+      <span class="pill" title="Job lines: Refresh Job Lines bookmark">Job lines <b id="lnAtTop">—</b></span>
       <button class="btn yb" id="refresh" type="button">Refresh</button>
     </div>
   </div>
@@ -464,7 +465,11 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
   const SELF_REASONS = ['incident_stocktake'];
   const locKey = (w, l) => w + '|' + String(l || '').trim().toUpperCase();
   let RES = new Map(), RESAT = null, RESSRC = '';
-  async function loadReserved() {
+  // one SOH / prices download at a time, shared by the pending jobs and the job lines
+  let resP = null, priceP = null;
+  const loadReserved = () => resP || (resP = loadReservedOnce().finally(() => { resP = null; }));
+  const loadPrices = () => priceP || (priceP = loadPricesOnce().finally(() => { priceP = null; }));
+  async function loadReservedOnce() {
     const get = async (table, id) => { const r = await fetch(SB_URL + '/rest/v1/' + table + '?id=eq.' + id + '&select=updated_at', { headers: H, cache: 'no-store' }); if (!r.ok) return null; const j = await r.json(); return j[0] ? j[0].updated_at : null; };
     const full = async (table, id) => { const r = await fetch(SB_URL + '/rest/v1/' + table + '?id=eq.' + id + '&select=updated_at,cols,rows', { headers: H, cache: 'no-store' }); if (!r.ok) return null; const j = await r.json(); return j[0] || null; };
     try {
@@ -492,7 +497,7 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
   }
   // noon Minutes price and image per SKU, saved by the Refresh Prices bookmark (Supabase stocktake_snapshots row 6), as on the SOH dashboard
   let CAT = new Map(), PRICES = new Map(), pricesAt = null;
-  async function loadPrices() {
+  async function loadPricesOnce() {
     try {
       const A = SB_URL + '/rest/v1/stocktake_snapshots?id=eq.6&select=';
       const r = await fetch(A + 'updated_at', { headers: H, cache: 'no-store' }); if (!r.ok) return;
@@ -545,7 +550,7 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
       const j = await res.json();
       if (!j[0]) { RAW = null; setLive('err', 'No data yet'); render('No data yet. Click the Refresh Stock Take bookmark on grocery-tools.noon.team.'); return; }
       RAW = j[0]; lastAt = RAW.updated_at; updatedLabel = when(lastAt);
-      $('#loadedAt').textContent = updatedLabel;
+      $('#loadedAt').textContent = updatedLabel; paintAges();
       await loadReserved(); await loadPrices(); build(); setLive('ok', 'LIVE'); render();
     } catch (e) { setLive('err', 'Load failed'); if (!RAW) render('Could not load the data. ' + e.message); }
   }
@@ -833,10 +838,19 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
     });
     t.append(th, tb);
   }
+  // header times turn orange when a bookmark has not saved for a while
+  const STALE_MIN = 30;
+  function paintAges() {
+    const one = (id, at, what) => { const e = $(id); if (!e) return; if (!at) { e.textContent = '—'; return; } const mins = Math.round((Date.now() - Date.parse(at)) / 6e4); e.textContent = when(at) + (mins > STALE_MIN ? ' · ' + (mins < 120 ? mins + ' min' : Math.round(mins / 60) + ' h') + ' old' : ''); e.style.color = mins > STALE_MIN ? 'var(--o)' : ''; e.parentElement.title = mins > STALE_MIN ? what + ' has not saved for ' + mins + ' minutes. Is it still running on grocery-tools?' : what; };
+    one('#loadedAt', lastAt, 'Refresh Stock Take bookmark (pending incident jobs)');
+    one('#lnAtTop', ln.at, 'Refresh Job Lines bookmark (job lines and variance)');
+  }
+  setInterval(paintAges, 30000);
   function lnRender() {
     const [mFrom, mTo] = curMonth();
     $('#lnMonth').textContent = new Date(mFrom + 'T00:00:00').toLocaleDateString([], { month: 'long', year: 'numeric' }) + ' (' + mFrom.slice(8) + '–' + mTo.slice(8) + ')';
     $('#lnAt').textContent = ln.at ? when(ln.at) : '—';
+    paintAges();
     $('#lnFrom').min = $('#lnTo').min = mFrom; $('#lnFrom').max = $('#lnTo').max = mTo;
     document.querySelectorAll('#lnGrp [data-g]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.g === ln.g)));
     { const base = lnBase('pt'); const cnt = d3.rollup(base, (v) => v.length, (r) => r.pt); document.querySelectorAll('#lnPt [data-pt]').forEach((b) => { b.setAttribute('aria-pressed', String(b.dataset.pt === ln.pt)); let n = b.querySelector('.n'); if (!n) { n = el('span', 'n'); b.append(n); } n.textContent = F(b.dataset.pt === 'all' ? base.length : cnt.get(b.dataset.pt) || 0); }); }
@@ -891,7 +905,7 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
   }
   async function lnLoad(force) {
     try {
-      await Promise.all([loadReserved(), loadPrices()]);
+      loadReserved(); loadPrices(); // SKU, title, price and image fill in when SOH arrives; the lines do not wait for it
       if (ln.raw && !force) { const r = await fetch(LN_API + 'updated_at', { headers: H, cache: 'no-store' }); if (r.ok) { const j = await r.json(); if (j[0] && j[0].updated_at === ln.at) { lnBuild(); lnRender(); return; } } }
       const r = await fetch(LN_API + 'updated_at,batch,parts', { headers: H, cache: 'no-store' });
       if (!r.ok) { $('#lnCount').textContent = 'Job lines not set up yet (run stocktake_lines_v2.sql in Supabase).'; return; }
