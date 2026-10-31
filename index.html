@@ -785,7 +785,7 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
   const num = (v) => { const n = Number(String(v ?? '').replace(/,/g, '')); return isFinite(n) ? n : 0; };
   const SF = d3.format('+,');
   const ln = { rank: 'units', raw: null, at: null, rows: [], cols: [], g: 'all', s: 'all', wh: 'all', from: '', to: '', pt: 'all', zone: 'all', bs: 'all', vr: 'all', q: '', shown: 200 };
-  const curMonth = () => { const d = new Date(); return [iso(new Date(d.getFullYear(), d.getMonth(), 1)), iso(new Date(d.getFullYear(), d.getMonth() + 1, 0))]; };
+  const curMonth = () => { const d = new Date(); return [iso(new Date(d.getFullYear(), d.getMonth() - 1, 1)), iso(new Date(d.getFullYear(), d.getMonth() + 1, 0))]; }; // previous month start → current month end (data only exists up to today)
   function lnBuild() {
     const d = ln.raw; ln.rows = []; ln.cols = [];
     if (!d) return;
@@ -862,7 +862,7 @@ const BOOKMARK = "javascript:(async%20()%20%3D%3E%20%7B%20const%20SB%20%3D%20'ht
   setInterval(paintAges, 30000);
   function lnRender() {
     const [mFrom, mTo] = curMonth();
-    $('#lnMonth').textContent = new Date(mFrom + 'T00:00:00').toLocaleDateString([], { month: 'long', year: 'numeric' }) + ' (' + mFrom.slice(8) + '–' + mTo.slice(8) + ')';
+    $('#lnMonth').textContent = new Date(mFrom + 'T00:00:00').toLocaleDateString([], { month: 'long', year: 'numeric' }) + ' → today';
     $('#lnAt').textContent = ln.at ? when(ln.at) : '—';
     paintAges();
     $('#lnFrom').min = $('#lnTo').min = mFrom; $('#lnFrom').max = $('#lnTo').max = mTo;
